@@ -1,4 +1,5 @@
 import { test as baseTest } from "@playwright/test";
+import { parseReceipt } from "../../model";
 import { serveLocalUi } from "./local-ui";
 import { readPortalNetwork, type PortalNetwork } from "./network";
 import { testEnvConfig } from "./test-env.config";
@@ -27,6 +28,7 @@ type Fixtures = {
   network: PortalNetwork;
   walletSession: WalletSession | null;
   wallets: WalletSession;
+  mintedTransferId: string;
 };
 
 export const test = baseTest.extend<Options & Fixtures>({
@@ -43,6 +45,30 @@ export const test = baseTest.extend<Options & Fixtures>({
   ],
   network: async ({ request }, use) => {
     await use(await readPortalNetwork(request));
+  },
+  mintedTransferId: async ({ request, network }, use) => {
+    const id = testEnvConfig.E2E_MINTED_TRANSFER_ID;
+    if (!id)
+      throw new Error(
+        "Set E2E_MINTED_TRANSFER_ID to a completed transfer on this testnet",
+      );
+    const response = await request.get(
+      `/api/receipt?id=${encodeURIComponent(id)}`,
+    );
+    if (!response.ok())
+      throw new Error(`Transfer fixture lookup returned ${response.status()}`);
+    const receipt = parseReceipt(await response.json());
+    if (
+      receipt.kind !== "deposit" ||
+      receipt.networkKey !== network.networkKey ||
+      receipt.deposit.id !== id ||
+      receipt.akash.status !== "minted" ||
+      receipt.solana.kind !== "minted"
+    )
+      throw new Error(
+        "Transfer fixture must be minted on both chains of this testnet",
+      );
+    await use(id);
   },
   walletSession: [
     async (

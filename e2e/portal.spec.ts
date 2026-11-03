@@ -40,7 +40,7 @@ test.describe("Akash Sink portal", () => {
         - definition: ${formatAkt(network.feeUakt)} AKT
       `);
       await expect(transferPage.transferCard).toContainText(
-        `At least ${formatAkt(network.minTransferUakt)} AKT per transfer.`,
+        `From ${formatAkt(network.minTransferUakt)} to`,
       );
     });
 
@@ -151,7 +151,7 @@ test.describe("Akash Sink portal", () => {
       await transferPage.faqQuestion(FAQ_QUESTIONS[4]).click();
 
       await expect(transferPage.faq).toContainText(
-        `Each transfer must be at least ${formatAkt(network.minTransferUakt)} AKT.`,
+        `From ${formatAkt(network.minTransferUakt)} to`,
       );
     });
 
@@ -182,29 +182,42 @@ test.describe("Akash Sink portal", () => {
       );
     });
 
-    test("reports a ledger ID that does not exist", async ({ page }) => {
+    test("reports a ledger ID that does not exist", async ({
+      page,
+      mintedTransferId,
+    }) => {
       const { transfers } = await setup(page);
 
-      await transfers.track("999999999");
+      await transfers.track(
+        `${mintedTransferId.split("/")[0]}/9223372036854775807/1`,
+      );
 
       await expect(transfers.region).toContainText(
         "No transfer found with that ID. Check it and try again.",
       );
     });
 
-    test("opens the details of an existing ledger ID", async ({ page }) => {
+    test("opens the details of an existing ledger ID", async ({
+      page,
+      mintedTransferId,
+    }) => {
       const { transfers, details } = await setup(page);
 
-      await transfers.track("1");
+      await transfers.track(mintedTransferId);
 
       await expect(details.dialog).toBeVisible();
-      await expect(details.dialog).toContainText("Ledger ID1");
+      await expect(details.dialog).toContainText(
+        `Ledger ID${mintedTransferId}`,
+      );
       await expect(details.dialog).toContainText("Completed");
     });
 
-    test("closes the details with Escape", async ({ page }) => {
+    test("closes the details with Escape", async ({
+      page,
+      mintedTransferId,
+    }) => {
       const { transfers, details } = await setup(page);
-      await transfers.track("1");
+      await transfers.track(mintedTransferId);
       await expect(details.dialog).toBeVisible();
 
       await page.keyboard.press("Escape");
@@ -215,9 +228,10 @@ test.describe("Akash Sink portal", () => {
 
     test("returns focus to Track after closing the details", async ({
       page,
+      mintedTransferId,
     }) => {
       const { transfers, details } = await setup(page);
-      await transfers.track("1");
+      await transfers.track(mintedTransferId);
 
       await details.closeButton.click();
 
@@ -225,41 +239,59 @@ test.describe("Akash Sink portal", () => {
       await expect(transfers.trackButton).toBeFocused();
     });
 
-    test("reopens a details link after a reload", async ({ page, network }) => {
+    test("reopens a details link after a reload", async ({
+      page,
+      network,
+      mintedTransferId,
+    }) => {
       const { details } = await setup(page);
-      await details.openRecord("1", network.networkKey);
-      await expect(details.dialog).toContainText("Ledger ID1");
+      await details.openRecord(mintedTransferId, network.networkKey);
+      await expect(details.dialog).toContainText(
+        `Ledger ID${mintedTransferId}`,
+      );
 
       await page.reload();
 
-      await expect(details.dialog).toContainText("Ledger ID1");
+      await expect(details.dialog).toContainText(
+        `Ledger ID${mintedTransferId}`,
+      );
     });
 
-    test("copies the ledger ID from the details", async ({ page }) => {
+    test("copies the ledger ID from the details", async ({
+      page,
+      mintedTransferId,
+    }) => {
       const { transfers, details } = await setup(page);
-      await transfers.track("1");
+      await transfers.track(mintedTransferId);
 
-      await details.copyLedgerIdButton("1").click();
+      await details.copyLedgerIdButton(mintedTransferId).click();
 
       expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
-        "1",
+        mintedTransferId,
       );
     });
 
     test("locks page scrolling while the details are open", async ({
       page,
+      mintedTransferId,
     }) => {
       const { transfers, details } = await setup(page);
-      await transfers.track("1");
+      await transfers.track(mintedTransferId);
       await expect(details.dialog).toBeVisible();
 
       expect(await scrollAfterWheel(page)).toBe(0);
     });
 
-    test("refuses a details link from another testnet", async ({ page }) => {
+    test("refuses a details link from another testnet", async ({
+      page,
+      mintedTransferId,
+    }) => {
       const { details } = await setup(page);
 
-      await details.openRecord("1", JSON.stringify(["another-testnet"]));
+      await details.openRecord(
+        mintedTransferId,
+        JSON.stringify(["another-testnet"]),
+      );
 
       await expect(details.dialog).toContainText(
         "This transaction belongs to a different testnet.",

@@ -121,7 +121,7 @@ test.describe("Transfer form with an unfunded wallet", () => {
         "0,00",
       );
       await expect(transferPage.transferCard).toContainText(
-        `At least ${formatAkt(network.minTransferUakt, ",")} AKT per transfer.`,
+        `From ${formatAkt(network.minTransferUakt, ",")} to`,
       );
     });
 

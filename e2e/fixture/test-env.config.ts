@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { parseSinkId } from "../../lib/id";
 
 // The example is committed; a mnemonic there would end up in Git history.
 const exampleFile = join(__dirname, "..", ".env.example");
@@ -27,6 +28,10 @@ export const testEnvConfig = z
         );
       }, "Wallet connections need an HTTPS or loopback BASE_URL"),
     E2E_CHAIN_ID: z.string().min(1).default("akash-bridge-testnetify-dev-1"),
+    E2E_MINTED_TRANSFER_ID: z
+      .string()
+      .transform((value) => (value ? parseSinkId(value) : undefined))
+      .optional(),
     // Never echo the value: issues carry only this message.
     TEST_WALLET_MNEMONIC: z
       .string()
