@@ -51,6 +51,7 @@ import {
   shortenIdentifier,
   transactionLink,
   transferKey,
+  transferBounds,
   submissionId,
   submissionLookup,
   transferStatus,
@@ -127,10 +128,8 @@ function amount(): bigint {
 function maxAmount(): bigint {
   if (!config || balance === null) return 0n;
   const available = balance - BigInt(config.fee.amountUakt);
-  const max =
-    available < BigInt(config.limits.maxTransferUakt)
-      ? available
-      : BigInt(config.limits.maxTransferUakt);
+  const ceiling = transferBounds(config.limits).max;
+  const max = available < ceiling ? available : ceiling;
   return max > 0n && max >= BigInt(config.limits.minTransferUakt) ? max : 0n;
 }
 function renderStatus(value: DeveloperStatus) {
@@ -521,7 +520,7 @@ async function transfer() {
     const value = amount();
     if (value < BigInt(next.limits.minTransferUakt))
       throw new Error("Amount is below the per-transfer minimum");
-    if (value > BigInt(next.limits.maxTransferUakt))
+    if (value > transferBounds(next.limits).max)
       throw new Error("Amount exceeds the per-transfer limit");
     const currentSender = sender;
     if (!currentSender) throw new Error("Reconnect Keplr");
@@ -760,7 +759,7 @@ function readSnapshot() {
   const limit =
     value !== null &&
     config !== null &&
-    value > BigInt(config.limits.maxTransferUakt);
+    value > transferBounds(config.limits).max;
   const below =
     value !== null &&
     config !== null &&

@@ -45,8 +45,8 @@ function config() {
       enabled: true,
       minTransferUakt: "1",
       maxTransferUakt: "100000000",
-      maxDailyAmountPerAccountUakt: "100000000000",
-      maxDailyAmountTotalUakt: "1000000000000",
+      maxEpochAmountPerAccountUakt: "100000000000",
+      maxEpochAmountTotalUakt: "1000000000000",
     },
     client: {
       status: "active",

@@ -35,23 +35,34 @@ type Limits = Pick<
   BridgeConfig["limits"],
   | "minTransferUakt"
   | "maxTransferUakt"
-  | "maxDailyAmountPerAccountUakt"
-  | "maxDailyAmountTotalUakt"
+  | "maxEpochAmountPerAccountUakt"
+  | "maxEpochAmountTotalUakt"
 >;
 export function transferBounds(limits: Limits) {
+  const caps = [
+    BigInt(limits.maxEpochAmountTotalUakt),
+    BigInt(limits.maxEpochAmountPerAccountUakt),
+  ];
   return {
     min: BigInt(limits.minTransferUakt),
-    max: BigInt(limits.maxTransferUakt),
+    max: caps.reduce(
+      (smallest, cap) => (cap > 0n && cap < smallest ? cap : smallest),
+      BigInt(limits.maxTransferUakt),
+    ),
   };
 }
 export function boundsHelp(limits: Limits | undefined) {
   if (!limits) return "Transfer limits are loading.";
   const { min, max } = transferBounds(limits);
-  return `From ${displayAmount(min)} to ${displayAmount(max)} AKT per transfer. Up to ${displayAmount(limits.maxDailyAmountPerAccountUakt)} AKT per account each UTC day.`;
+  const accountLimit =
+    BigInt(limits.maxEpochAmountPerAccountUakt) === 0n
+      ? "No separate per-account amount limit."
+      : `Up to ${displayAmount(limits.maxEpochAmountPerAccountUakt)} AKT per account each quota period.`;
+  return `From ${displayAmount(min)} to ${displayAmount(max)} AKT per transfer. ${accountLimit}`;
 }
 export function boundsAnswer(limits: Limits | undefined) {
   if (!limits) return "Transfer limits are loading.";
-  return `${boundsHelp(limits)} All accounts share a ${displayAmount(limits.maxDailyAmountTotalUakt)} AKT daily limit. Your balance must also cover the Akash network fee. Daily limits reset at midnight UTC; Solana mints can proceed as soon as the deposit proof is ready.`;
+  return `${boundsHelp(limits)} All accounts share a ${displayAmount(limits.maxEpochAmountTotalUakt)} AKT limit per quota period. Your balance must also cover the Akash network fee. Limits reset when Akash starts its next configured quota period. Solana mints can proceed as soon as the deposit proof is ready.`;
 }
 export const unknownDateLabel = "Date unavailable";
 export const unknownDateHelp =
@@ -188,6 +199,7 @@ function receiptStep(receipt: BridgeReceipt | null): TransferStatus["step"] {
   if (receipt.solana.kind === "minted") return 4;
   if (
     receipt.akash.status === "refunded" ||
+    receipt.akash.status === "void_requested" ||
     receipt.akash.status === "refund_pending" ||
     receipt.solana.kind === "voided"
   )
@@ -276,7 +288,14 @@ export function transferStatus(
       ...base,
       label: "Refund pending",
       tone: "attention",
-      note: "We couldn’t complete this transfer. Your AKT returns to Keplr after the challenge window.",
+      note: "A refund requires confirmation, an elapsed challenge window and available refund capacity.",
+    };
+  if (receipt.akash.status === "void_requested")
+    return {
+      ...base,
+      label: "Void requested",
+      tone: "attention",
+      note: "Governance requested a void. Solana confirmation and refund authorization are still pending.",
     };
   if (receipt.akash.status === "minted")
     return {

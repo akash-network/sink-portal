@@ -106,8 +106,8 @@ const config: BridgeConfig = {
     enabled: true,
     minTransferUakt: "1",
     maxTransferUakt: "100000000",
-    maxDailyAmountTotalUakt: "1000000000000",
-    maxDailyAmountPerAccountUakt: "100000000000",
+    maxEpochAmountTotalUakt: "1000000000000",
+    maxEpochAmountPerAccountUakt: "100000000000",
   },
   client: {
     status: "active",
@@ -346,16 +346,20 @@ test("config parsing binds network identity and validates keys", () => {
     /nonzero/,
   );
 });
-test("all amount limits are required and positive", () => {
+test("active amount limits are required and the account cap may be unlimited", () => {
   for (const key of [
     "minTransferUakt",
     "maxTransferUakt",
-    "maxDailyAmountPerAccountUakt",
-    "maxDailyAmountTotalUakt",
+    "maxEpochAmountPerAccountUakt",
+    "maxEpochAmountTotalUakt",
   ]) {
-    for (const value of [undefined, "0", "-1", "1.5", "", 1])
+    for (const value of [undefined, "-1", "1.5", "", 1])
       assert.throws(() =>
         parseConfig({ ...config, limits: { ...config.limits, [key]: value } }),
+      );
+    if (key !== "maxEpochAmountPerAccountUakt")
+      assert.throws(() =>
+        parseConfig({ ...config, limits: { ...config.limits, [key]: "0" } }),
       );
   }
   assert.throws(() => parseConfig({ ...config, version: 1 }), /Unsupported/);
@@ -363,23 +367,55 @@ test("all amount limits are required and positive", () => {
     ...config.limits,
     minTransferUakt: "1000000",
     maxTransferUakt: "1000000000",
-    maxDailyAmountPerAccountUakt: "5000000000",
-    maxDailyAmountTotalUakt: "10000000000",
+    maxEpochAmountPerAccountUakt: "5000000000",
+    maxEpochAmountTotalUakt: "10000000000",
   };
   assert.deepEqual(transferBounds(limits), { min: 1000000n, max: 1000000000n });
   assert.equal(
     boundsHelp(limits),
-    "From 1.00 to 1,000.00 AKT per transfer. Up to 5,000.00 AKT per account each UTC day.",
+    "From 1.00 to 1,000.00 AKT per transfer. Up to 5,000.00 AKT per account each quota period.",
   );
   assert.match(
     boundsAnswer(limits),
-    /All accounts share a 10,000.00 AKT daily limit/,
+    /All accounts share a 10,000.00 AKT limit per quota period/,
   );
   assert.match(
     boundsAnswer(limits),
-    /midnight UTC; Solana mints can proceed as soon/,
+    /next configured quota period\. Solana mints can proceed as soon/,
   );
   assert.equal(boundsHelp(undefined), "Transfer limits are loading.");
+  const unlimited = { ...limits, maxEpochAmountPerAccountUakt: "0" };
+  assert.equal(
+    parseConfig({ ...config, limits: unlimited }).limits
+      .maxEpochAmountPerAccountUakt,
+    "0",
+  );
+  assert.match(boundsHelp(unlimited), /No separate per-account amount limit/);
+  assert.match(boundsAnswer(unlimited), /All accounts share a 10,000.00 AKT/);
+});
+test("independent quota caps bound transfers and a paused minimum may be zero", () => {
+  const limits = {
+    ...config.limits,
+    minTransferUakt: "1000000",
+    maxTransferUakt: "10000000",
+    maxEpochAmountPerAccountUakt: "5000000",
+    maxEpochAmountTotalUakt: "8000000",
+  };
+  assert.deepEqual(parseConfig({ ...config, limits }).limits, limits);
+  assert.deepEqual(transferBounds(limits), { min: 1000000n, max: 5000000n });
+  assert.deepEqual(
+    transferBounds({ ...limits, maxEpochAmountPerAccountUakt: "0" }),
+    { min: 1000000n, max: 8000000n },
+  );
+  for (const key of ["maxEpochAmountPerAccountUakt", "maxEpochAmountTotalUakt"])
+    assert.throws(() =>
+      parseConfig({ ...config, limits: { ...limits, [key]: "999999" } }),
+    );
+  const paused = { ...limits, enabled: false, minTransferUakt: "0" };
+  assert.deepEqual(parseConfig({ ...config, limits: paused }).limits, paused);
+  assert.throws(() =>
+    parseConfig({ ...config, limits: { ...paused, enabled: true } }),
+  );
 });
 test("an expired or frozen light client pauses new transfers", () => {
   assert.equal(clientPause(parseConfig(config).client), "");
@@ -1397,16 +1433,85 @@ test("receipts retain financial completion and reject contradictory refund field
   );
 });
 
-test("a veto remains visible after unpaid authorization is refreshed", () => {
+test("a veto applies only to a refund candidate", () => {
   const r = receipt();
-  const parsed = parseReceipt({ ...r, akash: { ...r.akash, hold: "veto" } });
+  const parsed = parseReceipt({
+    ...r,
+    akash: {
+      ...r.akash,
+      status: "refund_pending",
+      hold: "veto",
+      challengeEndSeconds: "200",
+    },
+  });
   assert.match(receiptView(parsed).message, /veto hold/);
+  for (const status of [
+    "transfer_pending",
+    "minted",
+    "void_requested",
+    "refunded",
+  ])
+    assert.throws(
+      () =>
+        parseReceipt({
+          ...r,
+          akash: { ...r.akash, status, hold: "veto" },
+        }),
+      /refund state/,
+    );
+});
+
+test("a void request is distinct from a Solana void or a paid refund", () => {
+  const r = receipt();
+  r.akash.status = "void_requested";
+  const parsed = parseReceipt(r);
+  const status = transferStatus({}, { receipt: parsed, error: "" });
+  assert.deepEqual(
+    [
+      status.label,
+      status.refunded,
+      status.retryable,
+      status.settled,
+      status.step,
+    ],
+    ["Void requested", false, false, false, 0],
+  );
+  assert.equal(receiptView(parsed).title, "Void requested on Akash");
+  assert.match(receiptView(parsed).message, /has not confirmed a void/);
   assert.throws(
     () =>
-      parseReceipt({
-        ...r,
-        akash: { ...r.akash, status: "minted", hold: "veto" },
-      }),
+      parseReceipt({ ...r, akash: { ...r.akash, challengeEndSeconds: "200" } }),
     /refund state/,
   );
+
+  const minted = parseReceipt({
+    ...r,
+    solana: {
+      kind: "minted",
+      contextSlot: "200",
+      resolvedSlot: "190",
+      proofHeight: "101",
+    },
+  });
+  assert.equal(
+    transferStatus({}, { receipt: minted, error: "" }).label,
+    "Completed",
+  );
+  assert.match(
+    receiptView(minted).message,
+    /reporter confirmation is still pending/,
+  );
+  const voided = parseReceipt({
+    ...r,
+    solana: {
+      kind: "voided",
+      contextSlot: "200",
+      resolvedSlot: "190",
+      proofHeight: "101",
+    },
+  });
+  const refund = transferStatus({}, { receipt: voided, error: "" });
+  assert.equal(refund.label, "Refund pending");
+  assert.equal(refund.refunded, false);
+  assert.match(refund.note, /requires confirmation/);
 });

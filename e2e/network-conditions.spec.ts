@@ -13,7 +13,6 @@ import { TransferDetailsDialog } from "./pages/TransferDetailsDialog";
 import { TransferPage } from "./pages/TransferPage";
 import { TransfersSection } from "./pages/TransfersSection";
 
-const UINT64_MAX = "18446744073709551615";
 const LIMITS_QUESTION = "Is there a minimum or maximum amount?";
 const CLIENT_PAUSE =
   "New transfers are paused because Solana can’t verify Akash right now. An operator needs to restore it. AKT from transfers you already sent stays held on Akash until then.";
@@ -83,40 +82,41 @@ test.describe("Network conditions", () => {
         "From 1.00 to 50.00 AKT per transfer.",
       );
       await expect(transferPage.faq).toContainText(
-        "Each transfer must be at least 1.00 AKT and can be up to 50.00 AKT,",
+        "From 1.00 to 50.00 AKT per transfer.",
       );
     });
 
-    test("shows the daily amount each account can send", async ({ page }) => {
-      const { transferPage } = await setup(page, (config) => {
-        config.limits.maxDailyAmountPerAccountUakt = "100000000";
-      });
-
-      await transferPage.faqQuestion(LIMITS_QUESTION).click();
-
-      await expect(transferPage.transferCard).toContainText(
-        "Up to 100.00 AKT per account each UTC day.",
-      );
-      await expect(transferPage.faq).toContainText(
-        "Each account can send up to 100.00 AKT in total each UTC day.",
-      );
-    });
-
-    test("says there are no limits when the network sets none", async ({
+    test("shows the amount each account can send per quota period", async ({
       page,
     }) => {
       const { transferPage } = await setup(page, (config) => {
-        config.limits.minTransferUakt = "0";
-        config.limits.maxTransferUakt = UINT64_MAX;
-        config.limits.maxDailyAmountPerAccountUakt = "0";
+        config.limits.maxEpochAmountPerAccountUakt = "100000000";
+        config.limits.maxTransferUakt = "100000000";
       });
 
       await transferPage.faqQuestion(LIMITS_QUESTION).click();
 
       await expect(transferPage.transferCard).toContainText(
-        "No minimum or maximum.",
+        "Up to 100.00 AKT per account each quota period.",
       );
-      await expect(transferPage.faq).toContainText("No. Send any amount,");
+      await expect(transferPage.faq).toContainText(
+        "Up to 100.00 AKT per account each quota period.",
+      );
+    });
+
+    test("shows an unlimited account allowance while keeping transfer limits", async ({
+      page,
+    }) => {
+      const { transferPage } = await setup(page, (config) => {
+        config.limits.maxEpochAmountPerAccountUakt = "0";
+      });
+
+      await transferPage.faqQuestion(LIMITS_QUESTION).click();
+
+      await expect(transferPage.transferCard).toContainText(
+        "No separate per-account amount limit.",
+      );
+      await expect(transferPage.faq).toContainText("All accounts share a");
     });
   });
 

@@ -72,7 +72,12 @@ Version-2 history uses `akt-bridge-submissions-v2`. The previous
 `akt-bridge-submissions-v1` entry remains read-only. Older numeric IDs are never
 interpreted as composite IDs or sent to the new chain.
 
-All displayed limits are positive uakt amounts: minimum and maximum per
-transfer, account daily cap and aggregate daily cap. Both send limits reset
-at midnight UTC. They do not schedule Solana mints, which can run immediately
-under their independent amount caps.
+Displayed limits are uakt amounts. The account cap may be zero for unlimited
+account sending. The minimum is positive while deposits are enabled and may be zero
+while paused. The maximum and aggregate cap remain positive. Account and aggregate
+caps can be lower than the transfer maximum; the portal bounds input by the smallest
+applicable cap. Current epoch consumption can reduce the remaining allowance further.
+Account and aggregate allowances reset when Akash's existing `x/epochs`
+module advances its `day` record. Its duration and start are configured in
+epochs genesis. The portal does not infer a reset from local time. Solana
+mints can run immediately under their independent amount caps.

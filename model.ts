@@ -235,17 +235,20 @@ export function parseConfig(value: unknown): BridgeConfig {
   if (BigInt(fee.gas) === 0n) throw new Error("Invalid transaction gas");
   const limits = {
     enabled: bool(l.enabled),
-    minTransferUakt: positive(l.minTransferUakt),
+    minTransferUakt: uint(l.minTransferUakt),
     maxTransferUakt: positive(l.maxTransferUakt),
-    maxDailyAmountPerAccountUakt: positive(l.maxDailyAmountPerAccountUakt),
-    maxDailyAmountTotalUakt: positive(l.maxDailyAmountTotalUakt),
+    maxEpochAmountPerAccountUakt: uint(l.maxEpochAmountPerAccountUakt),
+    maxEpochAmountTotalUakt: positive(l.maxEpochAmountTotalUakt),
   };
   const maximum = BigInt(limits.maxTransferUakt);
+  const minimum = BigInt(limits.minTransferUakt);
   if (
-    BigInt(limits.minTransferUakt) > maximum ||
+    (limits.enabled && minimum === 0n) ||
+    minimum > maximum ||
     maximum > 0xffffffffffffffffn ||
-    maximum > BigInt(limits.maxDailyAmountPerAccountUakt) ||
-    maximum > BigInt(limits.maxDailyAmountTotalUakt)
+    (BigInt(limits.maxEpochAmountPerAccountUakt) > 0n &&
+      minimum > BigInt(limits.maxEpochAmountPerAccountUakt)) ||
+    minimum > BigInt(limits.maxEpochAmountTotalUakt)
   )
     throw new Error("Inconsistent transfer limits");
   return {
@@ -343,6 +346,7 @@ export function parseReceipt(value: unknown): BridgeReceipt {
   if (
     a.status !== "transfer_pending" &&
     a.status !== "minted" &&
+    a.status !== "void_requested" &&
     a.status !== "refund_pending" &&
     a.status !== "refunded"
   )
@@ -369,9 +373,7 @@ export function parseReceipt(value: unknown): BridgeReceipt {
     a.challengeEndSeconds === null ? null : positive(a.challengeEndSeconds);
   if (
     (a.status === "refund_pending") !== (challengeEndSeconds !== null) ||
-    (a.hold === "veto" &&
-      a.status !== "refund_pending" &&
-      a.status !== "transfer_pending")
+    (a.hold === "veto" && a.status !== "refund_pending")
   )
     throw new Error("Inconsistent refund state");
   const solana = parseSolana(v.solana);
@@ -598,7 +600,7 @@ export function receiptView(
   if (s.kind === "minted")
     return {
       title: "AKT received on Solana",
-      message: `${formatAmount(receipt.deposit.amountUakt)} AKT minted to your destination at finalized slot ${s.resolvedSlot}.${a.status === "transfer_pending" ? " Akash reporter confirmation is still pending." : ""}${hold}`,
+      message: `${formatAmount(receipt.deposit.amountUakt)} AKT minted to your destination at finalized slot ${s.resolvedSlot}.${a.status === "transfer_pending" || a.status === "void_requested" ? " Akash reporter confirmation is still pending." : ""}${hold}`,
       tone: a.hold === "none" ? "success" : "warning",
       steps: ["complete", "complete", "complete"],
     };
@@ -640,6 +642,18 @@ export function receiptView(
       ],
     };
   }
+  if (a.status === "void_requested")
+    return {
+      title: "Void requested on Akash",
+      message:
+        "Governance requested a void. Solana has not confirmed a void, and no refund has been paid." +
+        (s.kind === "unavailable"
+          ? ` Solana read unavailable: ${s.message}`
+          : "") +
+        hold,
+      tone: a.hold === "none" ? "pending" : "warning",
+      steps: ["complete", "active", "waiting"],
+    };
   return {
     title:
       a.status === "minted"

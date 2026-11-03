@@ -24,8 +24,8 @@ export interface BridgeConfig {
     enabled: boolean;
     minTransferUakt: string;
     maxTransferUakt: string;
-    maxDailyAmountPerAccountUakt: string;
-    maxDailyAmountTotalUakt: string;
+    maxEpochAmountPerAccountUakt: string;
+    maxEpochAmountTotalUakt: string;
   };
   // Solana's light client of Akash. Deposits made while it is expired or
   // frozen stay in escrow and cannot mint until an operator recovers it.
@@ -48,7 +48,12 @@ export interface Deposit {
 export interface AkashSettlement {
   height: string;
   timeSeconds: string;
-  status: "transfer_pending" | "minted" | "refund_pending" | "refunded";
+  status:
+    | "transfer_pending"
+    | "minted"
+    | "void_requested"
+    | "refund_pending"
+    | "refunded";
   hold: "none" | "veto" | "conflict";
   challengeEndSeconds: string | null; // null when the on-chain value is zero
   refundsEnabled: boolean;
