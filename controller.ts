@@ -1,11 +1,20 @@
 import type { OfflineSigner } from "@cosmjs/proto-signing";
-import type { BridgeConfig, BridgeReceipt, SavedSubmission } from "./contracts";
+import type {
+  BridgeConfig,
+  BridgeReceipt,
+  SavedSubmission,
+  TransferHistory,
+} from "./contracts";
 import {
+  LEGACY_STORAGE_KEY,
+  STORAGE_KEY,
+  checkDiscovered,
   connectKeplr,
   connectSolanaWallet,
   getSigner,
   keplrProvider,
   loadSubmissions,
+  mergeDiscovered,
   readBalance,
   saveSubmission,
   signDeposit,
@@ -27,12 +36,11 @@ import {
   message,
   parseAmount,
   parseConfig,
+  parseHistory,
   parseLookup,
   parseReceipt,
-  parseSaved,
   parseStatus,
   publicKey,
-  record,
   serverNow,
   syncServerClock,
   type DeveloperStatus,
@@ -43,6 +51,8 @@ import {
   shortenIdentifier,
   transactionLink,
   transferKey,
+  submissionId,
+  submissionLookup,
   transferStatus,
   setAmountStyle,
   visibleTransfers,
@@ -128,8 +138,19 @@ function renderStatus(value: DeveloperStatus) {
   statusError = "";
   emit();
 }
+function history() {
+  return discovered &&
+    discovered.networkKey === config?.network.networkKey &&
+    discovered.sender === sender
+    ? discovered
+    : null;
+}
 function visible() {
-  return visibleTransfers(submissions, config?.network.networkKey, sender);
+  return visibleTransfers(
+    mergeDiscovered(submissions, history()?.transfers ?? []),
+    config?.network.networkKey,
+    sender,
+  );
 }
 function observation(saved: SavedSubmission | undefined) {
   return saved ? observations.get(transferKey(saved)) : undefined;
@@ -141,18 +162,17 @@ async function refreshReceipt(saved: SavedSubmission) {
   const previous = observations.get(key)?.receipt ?? null;
   try {
     if (config?.network.networkKey !== saved.networkKey) return;
-    const query = saved.transferId
-      ? `id=${saved.transferId}`
-      : `tx=${saved.txHash}`;
+    if (saved.version !== 2)
+      throw new Error(
+        "This transfer uses the previous bridge. Its saved transaction hash has been preserved.",
+      );
+    const lookup = submissionLookup(saved);
+    const query =
+      lookup.kind === "transfer"
+        ? `id=${encodeURIComponent(lookup.id)}`
+        : `tx=${lookup.hash}`;
     const receipt = parseReceipt(await api(`/api/receipt?${query}`));
-    matchReceipt(
-      receipt,
-      saved.networkKey,
-      saved.transferId
-        ? { kind: "transfer", id: saved.transferId }
-        : { kind: "transaction", hash: saved.txHash },
-      saved,
-    );
+    matchReceipt(receipt, saved.networkKey, lookup, saved);
     if (!fresh(receipt.checkedAt))
       throw new Error("The server returned a stale receipt");
     if (previous?.kind === "deposit" && receipt.kind !== "deposit")
@@ -160,7 +180,11 @@ async function refreshReceipt(saved: SavedSubmission) {
         "Previously verified deposit is missing from the current chain index",
       );
     observations.set(key, { receipt, error: "" });
-    if (receipt.kind === "deposit" && !saved.transferId) {
+    if (
+      receipt.kind === "deposit" &&
+      saved.txHash !== null &&
+      !saved.transferId
+    ) {
       saveSubmission(localStorage, {
         ...saved,
         transferId: receipt.deposit.id,
@@ -197,6 +221,7 @@ async function pollTransfers() {
     emit();
   }
 }
+let discovered: TransferHistory | null = null;
 let discoveryBusy = false;
 let discoveryError = "";
 let lastDiscovery = 0;
@@ -207,32 +232,14 @@ async function discoverTransfers() {
   const networkKey = config.network.networkKey,
     address = sender;
   try {
-    const found = record(
+    const found = parseHistory(
       await api(`/api/transfers?sender=${encodeURIComponent(address)}`),
+      networkKey,
+      address,
     );
-    if (
-      found.version !== 1 ||
-      found.networkKey !== networkKey ||
-      found.sender !== address ||
-      !Array.isArray(found.transfers) ||
-      found.transfers.length > 100
-    )
-      throw new Error("Unexpected wallet transfer history");
-    const discovered = found.transfers.map(parseSaved);
-    if (
-      discovered.some(
-        (item) => item.networkKey !== networkKey || item.sender !== address,
-      )
-    )
-      throw new Error("History does not match this wallet and network");
     if (config?.network.networkKey !== networkKey || sender !== address) return;
-    for (const item of discovered) {
-      const existing = submissions.find(
-        (saved) => transferKey(saved) === transferKey(item),
-      );
-      if (!existing || !existing.transferId) saveSubmission(localStorage, item);
-    }
-    submissions = loadSubmissions(localStorage);
+    checkDiscovered(submissions, found.transfers);
+    discovered = found;
     discoveryError = "";
     lastDiscovery = Date.now();
     void pollTransfers();
@@ -458,14 +465,14 @@ function setMax() {
   if (maxAmount() > 0n) setAmount(formatAmount(maxAmount(), style.decimal));
 }
 function retry(txHash: string) {
-  const saved = visible().find((item) => item.txHash === txHash);
+  const saved = visible().find((item) => submissionId(item) === txHash);
   if (!saved || phase !== "idle") return;
   if (!transferStatus(saved, observation(saved)).retryable) return;
   invalidate();
   solana = null;
   destination = { text: saved.recipient, source: "retry", wallet: null };
   amountText = formatAmount(saved.amountUakt, style.decimal);
-  retryOf = saved.transferId ?? shortenIdentifier(saved.txHash);
+  retryOf = saved.transferId ?? shortenIdentifier(submissionId(saved));
   result = null;
   clearNotice();
   emit();
@@ -621,7 +628,7 @@ async function transfer() {
   }
 }
 export type LookupResult =
-  | { kind: "local"; txHash: string }
+  | { kind: "local"; id: string }
   | { kind: "remote"; link: string }
   | { kind: "none"; message: string };
 // Accepts a ledger (sink record) ID or a transaction hash in any letter case.
@@ -631,7 +638,7 @@ async function lookup(query: string): Promise<LookupResult> {
   const local = visible().find(
     (item) => item.txHash === value.toUpperCase() || item.transferId === value,
   );
-  if (local) return { kind: "local", txHash: local.txHash };
+  if (local) return { kind: "local", id: submissionId(local) };
   const current = config;
   if (!current)
     return { kind: "none", message: "The page is still loading. Try again." };
@@ -649,7 +656,7 @@ async function lookup(query: string): Promise<LookupResult> {
   try {
     receipt = parseReceipt(
       await api(
-        `/api/receipt?${parsed.kind === "transaction" ? `tx=${parsed.hash}` : `id=${parsed.id}`}`,
+        `/api/receipt?${parsed.kind === "transaction" ? `tx=${parsed.hash}` : `id=${encodeURIComponent(parsed.id)}`}`,
       ),
     );
     matchReceipt(receipt, current.network.networkKey, parsed);
@@ -671,7 +678,7 @@ async function lookup(query: string): Promise<LookupResult> {
   };
 }
 function onStorage(event: StorageEvent) {
-  if (event.key !== "akt-bridge-submissions-v1") return;
+  if (event.key !== STORAGE_KEY && event.key !== LEGACY_STORAGE_KEY) return;
   try {
     submissions = loadSubmissions(localStorage);
     historyError = "";
@@ -792,6 +799,8 @@ function readSnapshot() {
     notice,
     result,
     historyError,
+    legacyHistoryCount: submissions.filter((item) => item.version === 1).length,
+    historyTruncated: history()?.truncated ?? false,
     discoveryError,
     discoveryBusy,
     status,

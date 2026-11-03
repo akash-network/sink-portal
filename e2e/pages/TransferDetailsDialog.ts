@@ -23,7 +23,7 @@ export class TransferDetailsDialog {
 
   async openRecord(ledgerId: string, networkKey: string) {
     await this.page.goto(
-      `/#record/${ledgerId}?network=${encodeURIComponent(networkKey)}`,
+      `/#record/${encodeURIComponent(ledgerId)}?network=${encodeURIComponent(networkKey)}`,
     );
   }
 }

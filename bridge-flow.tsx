@@ -9,11 +9,11 @@ const steps = [
     x: 390,
     y: 65,
     lines: [
-      "Approve destination · sign MsgSink",
+      "Choose destination · sign MsgSink",
       "No tokens move through the browser",
     ],
     detail:
-      "Phantom signs an approval binding the destination, sender, amount and network. The browser verifies that signature. Keplr signs MsgSink on Akash; the transaction hash is saved before broadcast.",
+      "The user connects a Solana wallet or pastes a destination. Keplr signs MsgSink on Akash. The browser checks the signed sender, recipient, amount and fee, then saves the transaction hash before broadcast.",
   },
   {
     title: "x/sink",
@@ -25,7 +25,7 @@ const steps = [
       "Akash validators commit the app hash",
     ],
     detail:
-      "Native node code checks the signer, dest_type, canonical 32-byte Solana public key, curve or vault allowlist, uakt amount, enable switch and account limits. Escrow and the immutable transfer record are written atomically. MsgSinkResponse returns its ID. No CosmWasm or external account lookup runs here.",
+      "Native node code checks the signer, canonical 32-byte Solana public key, curve or vault allowlist, uakt amount, enable switch and account and aggregate daily amount limits. Escrow and the immutable transfer record are written atomically. MsgSinkResponse returns the owner, block height and per-block sequence. No CosmWasm or external account lookup runs here.",
   },
   {
     title: "Relayer",
@@ -74,12 +74,9 @@ const steps = [
     place: "Akash node",
     x: 30,
     y: 585,
-    lines: [
-      "Mint quorum → completed; AKT locked",
-      "Void quorum → challenge → refund",
-    ],
+    lines: ["Mint quorum → minted; AKT locked", "Void quorum → refund pending"],
     detail:
-      "Native x/sink counts authorized reporter votes. Mint quorum closes the record while backing stays locked. Void quorum starts the challenge window; a reporter or governance can veto. Unchallenged voids refund the original sender within the refund cap. Conflicting reports freeze settlement.",
+      "Native x/sink counts authorized reporter votes. Mint quorum records the mint while backing stays locked. Void quorum starts the challenge window; a reporter or governance can veto. Refund payment also requires current authorization, no hold, enabled refunds, queue priority and daily capacity. Conflicting reports create a dispute, including on already minted or refunded transfers.",
   },
   {
     title: "Supply reconciler",
@@ -91,7 +88,7 @@ const steps = [
       "Alert on escrow / supply mismatch",
     ],
     detail:
-      "Reconciliation checks escrow behind minted transfers = Solana supply + cumulative SPL burns. Pending and voided escrow are counted separately. The monitor reports discrepancies; it does not authorize mints or refunds.",
+      "Reconciliation checks escrow behind minted transfers = Solana supply + cumulative SPL burns. Pending transfers and pending refunds are counted separately; paid refunds are outside escrow. The monitor reports discrepancies; it does not authorize mints or refunds.",
   },
 ] as const;
 

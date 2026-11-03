@@ -11,7 +11,7 @@ export interface NetworkIdentity {
 // GET /api/config, HTTP 200. Read fresh committed Akash state and verify
 // the configured Solana deployment before returning signing configuration.
 export interface BridgeConfig {
-  version: 1;
+  version: 2;
   checkedAt: string;
   akashHeight: string;
   network: NetworkIdentity;
@@ -22,11 +22,10 @@ export interface BridgeConfig {
   fee: { amountUakt: string; gas: string };
   limits: {
     enabled: boolean;
-    minTransferUakt: string; // "0" when the node has no minimum
+    minTransferUakt: string;
     maxTransferUakt: string;
-    maxDailyPerAccount: number;
-    maxPendingPerAccount: number;
-    maxDailyAmountPerAccountUakt: string; // "0" when there is no daily limit
+    maxDailyAmountPerAccountUakt: string;
+    maxDailyAmountTotalUakt: string;
   };
   // Solana's light client of Akash. Deposits made while it is expired or
   // frozen stay in escrow and cannot mint until an operator recovers it.
@@ -49,8 +48,7 @@ export interface Deposit {
 export interface AkashSettlement {
   height: string;
   timeSeconds: string;
-  status: "pending" | "minted" | "voided" | "refunded";
-  sinkStatus: "transfer_pending" | "completed" | "void";
+  status: "transfer_pending" | "minted" | "refund_pending" | "refunded";
   hold: "none" | "veto" | "conflict";
   challengeEndSeconds: string | null; // null when the on-chain value is zero
   refundsEnabled: boolean;
@@ -71,7 +69,7 @@ export type ReceiptLookup =
 // GET /api/receipt?tx=<64 hex characters> or ?id=<canonical record ID>.
 // ID lookup returns a deposit with txHash:null; it does not require a tx index.
 export type BridgeReceipt = {
-  version: 1;
+  version: 2;
   networkKey: string;
   checkedAt: string;
 } & (
@@ -94,22 +92,44 @@ export type BridgeReceipt = {
 
 // New API failures: 400 malformed input, 422 successful tx is not a valid
 // sink deposit, 503 unavailable/stale/inconsistent chain observation.
-// Keep diagnostics concise; omit paths, stack traces and credentials.
 export interface ApiError {
   error: string;
 }
 
-// Browser localStorage only. Save successfully BEFORE submitting signed bytes.
-export interface SavedSubmission {
-  version: 1;
+interface SavedTransferDetails {
   networkKey: string;
-  txHash: string;
-  transferId?: string;
   sender: string;
   recipient: string;
   amountUakt: string;
   createdAt: string;
-  // A CheckTx rejection of this broadcast attempt does not prove that the
-  // same transaction was never included by an earlier submission.
   broadcastRejection?: { code: number; message: string };
+}
+export type SignedSubmission = SavedTransferDetails & {
+  version: 2;
+  txHash: string;
+  transferId?: string;
+};
+export type DiscoveredSubmission = Omit<SavedTransferDetails, "createdAt"> & {
+  version: 2;
+  txHash: null;
+  transferId: string;
+  // Null when the node no longer has the block that recorded the deposit.
+  createdAt: string | null;
+};
+export type LegacySubmission = SavedTransferDetails & {
+  version: 1;
+  txHash: string;
+  transferId?: string;
+};
+export type SavedSubmission =
+  SignedSubmission | DiscoveredSubmission | LegacySubmission;
+
+// GET /api/transfers?sender=<owner>: the owner's newest records first, at
+// most 100. truncated means older records exist; look those up by ID.
+export interface TransferHistory {
+  version: 2;
+  networkKey: string;
+  sender: string;
+  transfers: DiscoveredSubmission[];
+  truncated: boolean;
 }

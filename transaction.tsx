@@ -50,7 +50,9 @@ export function TransferDialog({
   const [copied, copy] = useCopied();
   const currentNetwork = config?.network.networkKey;
   const query =
-    lookup.kind === "transaction" ? `tx=${lookup.hash}` : `id=${lookup.id}`;
+    lookup.kind === "transaction"
+      ? `tx=${lookup.hash}`
+      : `id=${encodeURIComponent(lookup.id)}`;
   useEffect(() => {
     let cancelled = false,
       busy = false;
@@ -160,7 +162,7 @@ export function TransferDialog({
           <div className="well flex flex-col gap-2.5 p-4">
             <span className="over">Ledger ID</span>
             <div className="stack-sm flex items-center justify-between gap-3">
-              <span className="mono text-[22px] leading-[28px] font-medium tracking-[0.02em]">
+              <span className="mono min-w-0 break-all text-[14px] leading-[22px] font-medium">
                 {deposit.deposit.id}
               </span>
               <button

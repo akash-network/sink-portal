@@ -1,4 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
+import { parseConfig, parseSaved, record } from "../../model";
 import { testEnvConfig } from "./test-env.config";
 
 export interface PortalNetwork {
@@ -19,7 +20,7 @@ export async function readPortalNetwork(
   const response = await request.get("/api/config");
   if (!response.ok())
     throw new Error(`GET /api/config returned ${response.status()}`);
-  const config = await response.json();
+  const config = parseConfig(await response.json());
   const { chainId, networkKey, mint, program } = config.network;
   if (chainId !== testEnvConfig.E2E_CHAIN_ID)
     throw new Error(
@@ -39,14 +40,14 @@ export async function readPortalNetwork(
     mint,
     program,
     feeUakt: BigInt(config.fee.amountUakt),
-    minTransferUakt: BigInt(config.limits.minTransferUakt ?? "0"),
+    minTransferUakt: BigInt(config.limits.minTransferUakt),
     depositsEnabled: config.limits.enabled === true,
   };
 }
 
 export interface DiscoveredTransfer {
   transferId: string;
-  txHash: string;
+  txHash: string | null;
   amountUakt: string;
   recipient: string;
 }
@@ -61,7 +62,28 @@ export async function readWalletHistory(
   );
   if (!response.ok())
     throw new Error(`GET /api/transfers returned ${response.status()}`);
-  return (await response.json()).transfers;
+  const result = record(await response.json());
+  if (
+    result.version !== 2 ||
+    result.sender !== sender ||
+    !Array.isArray(result.transfers)
+  )
+    throw new Error("Unexpected owner history");
+  return result.transfers.map((value) => {
+    const transfer = parseSaved(value);
+    if (
+      transfer.version !== 2 ||
+      transfer.sender !== sender ||
+      !transfer.transferId
+    )
+      throw new Error("Invalid owner history transfer");
+    return {
+      transferId: transfer.transferId,
+      txHash: transfer.txHash,
+      amountUakt: transfer.amountUakt,
+      recipient: transfer.recipient,
+    };
+  });
 }
 
 export async function readReceipt(request: APIRequestContext, txHash: string) {

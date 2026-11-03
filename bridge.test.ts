@@ -20,7 +20,10 @@ import { BroadcastTxError } from "@cosmjs/stargate";
 import { ed25519 } from "@noble/curves/ed25519";
 import { base58 } from "@scure/base";
 import { AuthInfo, TxBody, TxRaw } from "cosmjs-types/cosmos/tx/v1beta1/tx";
-import { MsgSink } from "@akashnetwork/chain-sdk/private-types/akash.v1";
+import {
+  DestType,
+  MsgSink,
+} from "@akashnetwork/chain-sdk/private-types/akash.v1";
 import {
   GUARDIAN_PAUSE_TYPE,
   SINK_MSG_TYPE,
@@ -30,10 +33,20 @@ import {
   sinkAminoTypes,
 } from "./lib/sink";
 import { SignMode } from "cosmjs-types/cosmos/tx/signing/v1beta1/signing";
-import type { BridgeConfig, BridgeReceipt, SavedSubmission } from "./contracts";
+import type {
+  BridgeConfig,
+  BridgeReceipt,
+  DiscoveredSubmission,
+  SavedSubmission,
+  SignedSubmission,
+} from "./contracts";
 import {
+  checkDiscovered,
   connectSolanaWallet,
   loadSubmissions,
+  LEGACY_STORAGE_KEY,
+  mergeDiscovered,
+  STORAGE_KEY,
   saveSubmission,
   submitIntent,
   validateSigned,
@@ -50,9 +63,11 @@ import {
   matchReceipt,
   parseAmount,
   parseConfig,
+  parseHistory,
   parseReceipt,
   parseLookup,
   parseSaved,
+  parseSigned,
   publicKey,
   receiptView,
   syncServerClock,
@@ -63,7 +78,7 @@ const recipient = base58.encode(ed25519.getPublicKey(secret));
 const sender = toBech32("akash", new Uint8Array(20).fill(1));
 const sink = toBech32("akash", new Uint8Array(20).fill(2));
 const config: BridgeConfig = {
-  version: 1,
+  version: 2,
   checkedAt: new Date().toISOString(),
   akashHeight: "100",
   network: {
@@ -89,11 +104,10 @@ const config: BridgeConfig = {
   fee: { amountUakt: "12500", gas: "500000" },
   limits: {
     enabled: true,
-    minTransferUakt: "0",
+    minTransferUakt: "1",
     maxTransferUakt: "100000000",
-    maxDailyPerAccount: 20,
-    maxPendingPerAccount: 3,
-    maxDailyAmountPerAccountUakt: "0",
+    maxDailyAmountTotalUakt: "1000000000000",
+    maxDailyAmountPerAccountUakt: "100000000000",
   },
   client: {
     status: "active",
@@ -124,7 +138,7 @@ function signed(i = intent()): TxRaw {
             value: sinkRegistry().encode(
               sinkMessage({
                 sender: i.sender,
-                dest: i.recipient,
+                recipient: i.recipient,
                 amountUakt: i.amountUakt,
               }),
             ),
@@ -175,21 +189,20 @@ function adapters(
 }
 function receipt(): Extract<BridgeReceipt, { kind: "deposit" }> {
   return {
-    version: 1,
+    version: 2,
     networkKey: config.network.networkKey,
     txHash: "A".repeat(64),
     checkedAt: new Date().toISOString(),
     kind: "deposit",
     deposit: {
-      id: "4",
+      id: `${sender}/100/4`,
       sender,
       recipient,
       amountUakt: "1000001",
       height: "100",
     },
     akash: {
-      status: "pending",
-      sinkStatus: "transfer_pending",
+      status: "transfer_pending",
       hold: "none",
       height: "110",
       timeSeconds: "1800000000",
@@ -333,85 +346,40 @@ test("config parsing binds network identity and validates keys", () => {
     /nonzero/,
   );
 });
-test("transfer minimum is shown and optional on older nodes", () => {
-  const { minTransferUakt: _, ...older } = config.limits;
-  assert.equal(
-    parseConfig({ ...config, limits: older }).limits.minTransferUakt,
-    "0",
-  );
-  for (const minTransferUakt of ["-1", "1.5", "", 1])
-    assert.throws(() =>
-      parseConfig({ ...config, limits: { ...config.limits, minTransferUakt } }),
-    );
-  const max = "18446744073709551615";
-  const cases = [
-    ["0", max, "No minimum or maximum.", /^No\. Send any amount/],
-    ["0", "0", "No minimum or maximum.", /^No\. Send any amount/],
-    [
-      "0",
-      "1000000000",
-      "Up to 1,000.00 AKT per transfer.",
-      /^There’s no minimum\. Each transfer can be up to 1,000\.00 AKT,/,
-    ],
-    [
-      "500000",
-      max,
-      "At least 0.50 AKT per transfer.",
-      /^Each transfer must be at least 0\.50 AKT\. There’s no maximum,/,
-    ],
-    [
-      "1000000",
-      "1000000000",
-      "From 1.00 to 1,000.00 AKT per transfer.",
-      /at least 1\.00 AKT and can be up to 1,000\.00 AKT,/,
-    ],
-  ] as const;
-  for (const [min, maxTransfer, help, answer] of cases) {
-    const limits = { minTransferUakt: min, maxTransferUakt: maxTransfer };
-    assert.equal(boundsHelp(limits), help);
-    assert.match(boundsAnswer(limits), answer);
-    assert.doesNotMatch(boundsAnswer(limits), /bridge|\u2014/i);
+test("all amount limits are required and positive", () => {
+  for (const key of [
+    "minTransferUakt",
+    "maxTransferUakt",
+    "maxDailyAmountPerAccountUakt",
+    "maxDailyAmountTotalUakt",
+  ]) {
+    for (const value of [undefined, "0", "-1", "1.5", "", 1])
+      assert.throws(() =>
+        parseConfig({ ...config, limits: { ...config.limits, [key]: value } }),
+      );
   }
-  assert.deepEqual(
-    transferBounds({ minTransferUakt: "0", maxTransferUakt: max }),
-    { min: null, max: null },
-  );
-  assert.equal(boundsHelp(undefined), "No minimum or maximum.");
-});
-test("a per-account daily amount limit is shown when the node has one", () => {
-  const { maxDailyAmountPerAccountUakt: _, ...older } = config.limits;
-  assert.equal(
-    parseConfig({ ...config, limits: older }).limits
-      .maxDailyAmountPerAccountUakt,
-    "0",
-  );
+  assert.throws(() => parseConfig({ ...config, version: 1 }), /Unsupported/);
   const limits = {
+    ...config.limits,
     minTransferUakt: "1000000",
     maxTransferUakt: "1000000000",
     maxDailyAmountPerAccountUakt: "5000000000",
+    maxDailyAmountTotalUakt: "10000000000",
   };
+  assert.deepEqual(transferBounds(limits), { min: 1000000n, max: 1000000000n });
   assert.equal(
     boundsHelp(limits),
     "From 1.00 to 1,000.00 AKT per transfer. Up to 5,000.00 AKT per account each UTC day.",
   );
   assert.match(
     boundsAnswer(limits),
-    /up to 5,000\.00 AKT in total each UTC day\.$/,
+    /All accounts share a 10,000.00 AKT daily limit/,
   );
-  for (const none of ["0", "18446744073709551615"])
-    assert.equal(
-      boundsHelp({ ...limits, maxDailyAmountPerAccountUakt: none }),
-      "From 1.00 to 1,000.00 AKT per transfer.",
-    );
   assert.match(
-    boundsAnswer({
-      minTransferUakt: "0",
-      maxTransferUakt: "0",
-      maxDailyAmountPerAccountUakt: "5000000",
-    }),
-    /no per-transfer minimum or maximum.*up to 5\.00 AKT in total each UTC day\.$/,
+    boundsAnswer(limits),
+    /midnight UTC; Solana mints can proceed as soon/,
   );
-  assert.doesNotMatch(boundsAnswer(limits), /bridge|\u2014/i);
+  assert.equal(boundsHelp(undefined), "Transfer limits are loading.");
 });
 test("an expired or frozen light client pauses new transfers", () => {
   assert.equal(clientPause(parseConfig(config).client), "");
@@ -481,7 +449,7 @@ test("MsgSink signing rejects destination, type, sender, denomination and extra 
   for (const changes of [
     { sender: sink },
     { dest: sink },
-    { destType: 0 },
+    { destType: DestType.DEST_TYPE_INVALID },
     { destType: 2 },
     { amount: { denom: "other", amount: i.amountUakt } },
     { amount: undefined },
@@ -543,7 +511,7 @@ test("MsgSink Amino fallback preserves exactly the signed destination and amount
   const i = intent();
   const msg = sinkMessage({
     sender: i.sender,
-    dest: i.recipient,
+    recipient: i.recipient,
     amountUakt: i.amountUakt,
   });
   const amino = sinkAminoTypes();
@@ -564,6 +532,37 @@ test("MsgSink Amino fallback preserves exactly the signed destination and amount
     validateSigned({ ...raw, bodyBytes: TxBody.encode(body).finish() }, i)
       .length,
   );
+});
+test("MsgSink Amino matches the node's sign bytes and accepts only a Solana destination", () => {
+  const amino = sinkAminoTypes(),
+    converted = amino.toAmino(
+      sinkMessage({
+        sender: "akash1qurswpc8qurswpc8qurswpc8qurswpc87g2aem",
+        recipient: "US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx",
+        amountUakt: "1000000",
+      }),
+    );
+  assert.equal(
+    JSON.stringify(converted, [
+      "amount",
+      "denom",
+      "dest",
+      "dest_type",
+      "sender",
+      "type",
+      "value",
+    ]),
+    '{"type":"sink/MsgSink","value":{"amount":{"amount":"1000000","denom":"uakt"},"dest":"US517G5965aydkZ46HS38QLi7UQiSojurfbQfKCELFx","dest_type":1,"sender":"akash1qurswpc8qurswpc8qurswpc8qurswpc87g2aem"}}',
+  );
+  for (const destType of [0, 2, "DEST_TYPE_SOLANA", undefined])
+    assert.throws(
+      () =>
+        amino.fromAmino({
+          ...converted,
+          value: { ...converted.value, dest_type: destType },
+        }),
+      /Amino fields/,
+    );
 });
 test("MOCK adapter: public receipt is durable before the only broadcast and survives reload", async () => {
   const store = storage(),
@@ -592,9 +591,9 @@ test("MOCK adapter: public receipt is durable before the only broadcast and surv
   assert.deepEqual(order, ["saved", "broadcast"]);
   assert.equal(loadSubmissions(store)[0].txHash, result.submission.txHash);
   assert.equal(
-    Object.keys(
-      JSON.parse(store.getItem("akt-bridge-submissions-v1") ?? "[]")[0],
-    ).includes("bytes"),
+    Object.keys(JSON.parse(store.getItem(STORAGE_KEY) ?? "[]")[0]).includes(
+      "bytes",
+    ),
     false,
   );
 });
@@ -766,7 +765,7 @@ test("Akash-only mint does not claim finalized receipt; elapsed challenge does n
   const r = receipt();
   r.akash.status = "minted";
   assert.equal(receiptView(r).title, "Awaiting Solana verification");
-  r.akash.status = "voided";
+  r.akash.status = "refund_pending";
   r.akash.challengeEndSeconds = "1";
   r.solana = {
     kind: "voided",
@@ -782,7 +781,7 @@ test("receipts reject network, transaction and immutable deposit mismatch", () =
   assert.ok(r.txHash);
   const lookup = { kind: "transaction" as const, hash: r.txHash };
   const saved: SavedSubmission = {
-    version: 1,
+    version: 2,
     networkKey: config.network.networkKey,
     txHash: r.txHash,
     sender,
@@ -841,7 +840,7 @@ test("MOCK adapter: CheckTx rejection is distinct from transport uncertainty and
     message: "account sequence mismatch",
   });
   const unknown: BridgeReceipt = {
-    version: 1,
+    version: 2,
     kind: "unknown",
     networkKey: restored.networkKey,
     txHash: restored.txHash,
@@ -907,7 +906,10 @@ test("MOCK adapter: non-positive CheckTx code is not classified as a confirmed r
 });
 
 test("record lookup validates canonical IDs and never fabricates a transaction hash", () => {
-  assert.deepEqual(parseLookup("42"), { kind: "transfer", id: "42" });
+  assert.deepEqual(parseLookup(`${sender}/100/42`), {
+    kind: "transfer",
+    id: `${sender}/100/42`,
+  });
   assert.deepEqual(parseLookup("a".repeat(64)), {
     kind: "transaction",
     hash: "A".repeat(64),
@@ -916,13 +918,17 @@ test("record lookup validates canonical IDs and never fabricates a transaction h
     assert.throws(() => parseLookup(value), /transfer ID/);
   const r = { ...receipt(), txHash: null };
   assert.deepEqual(parseReceipt(r), r);
-  matchReceipt(r, r.networkKey, { kind: "transfer", id: "4" });
+  matchReceipt(r, r.networkKey, { kind: "transfer", id: `${sender}/100/4` });
   assert.throws(
-    () => matchReceipt(r, r.networkKey, { kind: "transfer", id: "5" }),
+    () =>
+      matchReceipt(r, r.networkKey, {
+        kind: "transfer",
+        id: `${sender}/100/5`,
+      }),
     /transfer ID/,
   );
   assert.throws(
-    () => matchReceipt(r, "wrong", { kind: "transfer", id: "4" }),
+    () => matchReceipt(r, "wrong", { kind: "transfer", id: `${sender}/100/4` }),
     /network/,
   );
   assert.throws(
@@ -940,11 +946,10 @@ test("record lookup validates canonical IDs and never fabricates a transaction h
         ...r,
         deposit: { ...r.deposit, id: "18446744073709551616" },
       }),
-    /Record ID/,
+    /Transfer ID/,
   );
   assert.throws(
-    () =>
-      parseReceipt({ ...r, akash: { ...r.akash, sinkStatus: "completed" } }),
+    () => parseReceipt({ ...r, deposit: { ...r.deposit, height: "101" } }),
     /disagrees/,
   );
 });
@@ -953,7 +958,7 @@ test("learned transfer IDs survive old history and bind later ID-only receipts",
   const r = receipt();
   assert.ok(r.txHash);
   const saved: SavedSubmission = {
-    version: 1,
+    version: 2,
     networkKey: r.networkKey,
     txHash: r.txHash,
     sender,
@@ -964,7 +969,7 @@ test("learned transfer IDs survive old history and bind later ID-only receipts",
   const store = storage();
   saveSubmission(store, saved);
   assert.deepEqual(loadSubmissions(store), [saved]);
-  const known = { ...saved, transferId: "4" };
+  const known = { ...saved, transferId: `${sender}/100/4` };
   saveSubmission(store, known);
   saveSubmission(store, saved);
   assert.deepEqual(loadSubmissions(store), [known]);
@@ -973,17 +978,22 @@ test("learned transfer IDs survive old history and bind later ID-only receipts",
     /details changed/,
   );
   assert.throws(
-    () => saveSubmission(store, { ...saved, transferId: "5" }),
+    () => saveSubmission(store, { ...saved, transferId: `${sender}/100/5` }),
     /ID changed/,
   );
   const queried = { ...r, txHash: null };
-  matchReceipt(queried, r.networkKey, { kind: "transfer", id: "4" }, known);
+  matchReceipt(
+    queried,
+    r.networkKey,
+    { kind: "transfer", id: `${sender}/100/4` },
+    known,
+  );
   assert.throws(
     () =>
       matchReceipt(
         queried,
         r.networkKey,
-        { kind: "transfer", id: "4" },
+        { kind: "transfer", id: `${sender}/100/4` },
         { ...known, amountUakt: "1" },
       ),
     /does not match/,
@@ -993,12 +1003,15 @@ test("learned transfer IDs survive old history and bind later ID-only receipts",
       matchReceipt(
         queried,
         r.networkKey,
-        { kind: "transfer", id: "4" },
-        { ...known, transferId: "5" },
+        { kind: "transfer", id: `${sender}/100/4` },
+        { ...known, transferId: `${sender}/100/5` },
       ),
     /different network/,
   );
-  assert.throws(() => parseSaved({ ...saved, transferId: "04" }), /Record ID/);
+  assert.throws(
+    () => parseSaved({ ...saved, transferId: "04" }),
+    /Transfer ID/,
+  );
 });
 
 test("saved history keeps vault and non-canonical destinations Akash accepts", () => {
@@ -1022,10 +1035,10 @@ test("saved history keeps vault and non-canonical destinations Akash accepts", (
   destinations.forEach((destination, index) => {
     assert.equal(checkDestination(destination).state, "account");
     const saved: SavedSubmission = {
-      version: 1,
+      version: 2,
       networkKey: config.network.networkKey,
       txHash: "ABC"[index].repeat(64),
-      transferId: String(index + 1),
+      transferId: `${sender}/100/${index + 1}`,
       sender,
       recipient: destination,
       amountUakt: "1000000",
@@ -1049,7 +1062,7 @@ test("saved history keeps vault and non-canonical destinations Akash accepts", (
 
 test("wallet transfer rows isolate wallets/networks and show latest first", () => {
   const base: SavedSubmission = {
-    version: 1,
+    version: 2,
     networkKey: config.network.networkKey,
     txHash: "A".repeat(64),
     sender,
@@ -1077,7 +1090,7 @@ test("wallet transfer rows isolate wallets/networks and show latest first", () =
 test("transfer status requires fresh finality and distinguishes refunds from minting", () => {
   const r = receipt();
   const saved: SavedSubmission = {
-    version: 1,
+    version: 2,
     networkKey: r.networkKey,
     txHash: "A".repeat(64),
     sender,
@@ -1114,7 +1127,7 @@ test("transfer status requires fresh finality and distinguishes refunds from min
   );
   r.akash.status = "refunded";
   assert.equal(status().label, "Needs review");
-  r.akash.status = "voided";
+  r.akash.status = "refund_pending";
   r.solana.kind = "voided";
   r.akash.challengeEndSeconds = "1";
   assert.deepEqual(
@@ -1133,7 +1146,7 @@ test("transfer status requires fresh finality and distinguishes refunds from min
     "Update unavailable",
   );
   const failed: BridgeReceipt = {
-    version: 1,
+    version: 2,
     networkKey: r.networkKey,
     checkedAt: new Date().toISOString(),
     kind: "rejected",
@@ -1206,9 +1219,9 @@ test("compact identifiers preserve full values and private links bind the networ
     networkKey: key,
   });
   assert.ok(transactionLink(hash, key).startsWith("#tx/"));
-  assert.deepEqual(portalRoute(recordLink("13", key)), {
+  assert.deepEqual(portalRoute(recordLink(`${sender}/100/13`, key)), {
     kind: "record",
-    id: "13",
+    id: `${sender}/100/13`,
     networkKey: key,
   });
   assert.equal(portalRoute(`#record/013?network=x`).kind, "invalid");
@@ -1219,4 +1232,181 @@ test("compact identifiers preserve full values and private links bind the networ
     `#tx/${hash}?network=x?ignored`,
   ])
     assert.equal(portalRoute(invalid).kind, "invalid");
+});
+
+test("new history preserves the previous network's storage byte for byte", () => {
+  const store = storage();
+  const legacy = {
+    version: 1,
+    networkKey: "old-network",
+    txHash: "B".repeat(64),
+    transferId: "7",
+    sender,
+    recipient,
+    amountUakt: "1000000",
+    createdAt: new Date().toISOString(),
+  };
+  const encoded = JSON.stringify([legacy]);
+  store.setItem(LEGACY_STORAGE_KEY, encoded);
+  const current: SavedSubmission = {
+    ...legacy,
+    version: 2,
+    networkKey: config.network.networkKey,
+    txHash: "C".repeat(64),
+    transferId: `${sender}/100/7`,
+  };
+  saveSubmission(store, current);
+  assert.equal(store.getItem(LEGACY_STORAGE_KEY), encoded);
+  assert.deepEqual(loadSubmissions(store), [current, legacy]);
+  assert.throws(() => parseSigned(legacy), /signed in this browser/);
+  assert.ok(store.getItem(STORAGE_KEY));
+});
+
+test("owner discovery merges with a signed transfer in either arrival order", () => {
+  const signed: SignedSubmission = {
+    version: 2,
+    networkKey: config.network.networkKey,
+    txHash: "A".repeat(64),
+    sender,
+    recipient,
+    amountUakt: "1000000",
+    createdAt: new Date().toISOString(),
+  };
+  const discovered: DiscoveredSubmission = {
+    ...signed,
+    txHash: null,
+    transferId: `${sender}/100/1`,
+    createdAt: null,
+  };
+  const known = { ...signed, transferId: discovered.transferId };
+  assert.deepEqual(mergeDiscovered([signed], [discovered]), [
+    signed,
+    discovered,
+  ]);
+  assert.deepEqual(mergeDiscovered([known], [discovered]), [known]);
+  const store = storage();
+  saveSubmission(store, signed);
+  saveSubmission(store, known);
+  assert.deepEqual(loadSubmissions(store), [known]);
+  assert.deepEqual(mergeDiscovered(loadSubmissions(store), [discovered]), [
+    known,
+  ]);
+  assert.throws(
+    () => saveSubmission(store, { ...known, txHash: "B".repeat(64) }),
+    /hash changed/,
+  );
+  assert.throws(() => parseSigned(discovered), /signed in this browser/);
+  checkDiscovered([known], [discovered]);
+  assert.throws(
+    () => checkDiscovered([known], [{ ...discovered, amountUakt: "2" }]),
+    /does not match/,
+  );
+  assert.throws(
+    () => parseSaved({ ...discovered, transferId: undefined }),
+    /discovered/,
+  );
+  assert.throws(
+    () => parseSaved({ ...discovered, sender: sink }),
+    /owner mismatch/,
+  );
+  assert.throws(() => parseSaved({ ...signed, createdAt: null }), /timestamp/);
+});
+
+test("wallet history binds network and owner and states truncation", () => {
+  const page = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      version: 2,
+      networkKey: config.network.networkKey,
+      txHash: null,
+      transferId: `${sender}/${200 - i}/1`,
+      sender,
+      recipient,
+      amountUakt: "1000000",
+      createdAt: i % 2 ? null : "2026-10-15T10:00:00.000Z",
+    }));
+  const history = {
+    version: 2,
+    networkKey: config.network.networkKey,
+    sender,
+    transfers: page(100),
+    truncated: true,
+  };
+  const parsed = parseHistory(history, config.network.networkKey, sender);
+  assert.equal(parsed.truncated, true);
+  assert.equal(parsed.transfers[1].createdAt, null);
+  assert.equal(
+    parseHistory(
+      { ...history, transfers: page(3), truncated: false },
+      config.network.networkKey,
+      sender,
+    ).transfers.length,
+    3,
+  );
+  for (const [changed, expected] of [
+    [{ truncated: undefined }, /Unexpected/],
+    [{ transfers: page(3) }, /Unexpected/],
+    [{ transfers: page(101), truncated: false }, /Unexpected/],
+    [{ sender: sink }, /Unexpected/],
+    [{ networkKey: "another-network" }, /Unexpected/],
+    [
+      {
+        transfers: [{ ...page(1)[0], txHash: "A".repeat(64) }],
+        truncated: false,
+      },
+      /does not match/,
+    ],
+    [{ transfers: [...page(1), ...page(1)], truncated: false }, /repeats/],
+  ] as const)
+    assert.throws(
+      () =>
+        parseHistory(
+          { ...history, ...changed },
+          config.network.networkKey,
+          sender,
+        ),
+      expected,
+    );
+});
+
+test("receipts retain financial completion and reject contradictory refund fields", () => {
+  const r = receipt();
+  for (const status of ["minted", "refunded"] as const) {
+    const parsed = parseReceipt({
+      ...r,
+      akash: { ...r.akash, status, hold: "conflict" },
+    });
+    assert.equal(parsed.kind, "deposit");
+    if (parsed.kind === "deposit") assert.equal(parsed.akash.status, status);
+  }
+  assert.throws(
+    () =>
+      parseReceipt({ ...r, akash: { ...r.akash, status: "refund_pending" } }),
+    /refund state/,
+  );
+  assert.throws(
+    () =>
+      parseReceipt({
+        ...r,
+        akash: { ...r.akash, status: "refunded", challengeEndSeconds: "200" },
+      }),
+    /refund state/,
+  );
+  assert.throws(
+    () => parseReceipt({ ...r, deposit: { ...r.deposit, sender: sink } }),
+    /identity/,
+  );
+});
+
+test("a veto remains visible after unpaid authorization is refreshed", () => {
+  const r = receipt();
+  const parsed = parseReceipt({ ...r, akash: { ...r.akash, hold: "veto" } });
+  assert.match(receiptView(parsed).message, /veto hold/);
+  assert.throws(
+    () =>
+      parseReceipt({
+        ...r,
+        akash: { ...r.akash, status: "minted", hold: "veto" },
+      }),
+    /refund state/,
+  );
 });

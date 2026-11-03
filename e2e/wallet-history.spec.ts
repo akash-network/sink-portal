@@ -39,14 +39,17 @@ test.describe("Wallet transfer history", () => {
     const details = new TransferDetailsDialog(page);
 
     await transfers
-      .viewLink(transfers.row(latest.transferId), latest.txHash)
+      .viewLink(
+        transfers.row(latest.transferId),
+        latest.txHash ?? latest.transferId,
+      )
       .click();
 
     await expect(details.dialog).toContainText(`Ledger ID${latest.transferId}`);
     await expect(details.dialog).toContainText(latest.recipient);
   });
 
-  test("highlights a saved transfer found by its lowercase hash", async ({
+  test("highlights a saved transfer found by its transfer ID", async ({
     page,
     request,
     wallets,
@@ -56,12 +59,12 @@ test.describe("Wallet transfer history", () => {
     const { transfers } = await setup(page);
     await expect(transfers.row(latest.transferId)).toBeVisible();
 
-    await transfers.track(latest.txHash.toLowerCase());
+    await transfers.track(latest.transferId);
 
     await expect(transfers.region).toContainText(`${latest.transferId} · `);
   });
 
-  test("opens the details of a hash this browser has not seen", async ({
+  test("opens the details of a transfer this browser has not seen", async ({
     page,
     request,
     wallets,
@@ -74,7 +77,7 @@ test.describe("Wallet transfer history", () => {
     await transferPage.goto();
     await expect(transferPage.connectKeplrButton).toBeEnabled();
 
-    await transfers.track(latest.txHash.toLowerCase());
+    await transfers.track(latest.transferId);
 
     await expect(details.dialog).toContainText(`Ledger ID${latest.transferId}`);
   });

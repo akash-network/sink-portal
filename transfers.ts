@@ -1,4 +1,4 @@
-import { parseSinkId } from "./lib/sink";
+import { compareSinkIds, parseSinkId } from "./lib/id";
 import type { BridgeConfig, BridgeReceipt, SavedSubmission } from "./contracts";
 import {
   EN_AMOUNTS,
@@ -31,68 +31,31 @@ export function displayAmount(
   const [whole, fraction = ""] = formatAmount(value).split(".");
   return `${whole.replace(/\B(?=(\d{3})+(?!\d))/g, group)}${decimal}${fraction.padEnd(2, "0")}`;
 }
-// Per-transfer bounds from the Akash sink params. A zero minimum (also used
-// when the node predates min_transfer) and a zero or uint64 maximum are none.
 type Limits = Pick<
   BridgeConfig["limits"],
-  "minTransferUakt" | "maxTransferUakt"
-> &
-  Partial<Pick<BridgeConfig["limits"], "maxDailyAmountPerAccountUakt">>;
-const UINT64_MAX = 18_446_744_073_709_551_615n;
-// Per-account UTC-day amount limit; zero, absent or uint64 means none.
-function dailyLimit(limits: Limits | undefined) {
-  const daily = BigInt(limits?.maxDailyAmountPerAccountUakt ?? "0");
-  return daily > 0n && daily < UINT64_MAX ? daily : null;
-}
+  | "minTransferUakt"
+  | "maxTransferUakt"
+  | "maxDailyAmountPerAccountUakt"
+  | "maxDailyAmountTotalUakt"
+>;
 export function transferBounds(limits: Limits) {
-  const min = BigInt(limits.minTransferUakt),
-    max = BigInt(limits.maxTransferUakt);
   return {
-    min: min > 0n ? min : null,
-    max: max === 0n || max === UINT64_MAX ? null : max,
+    min: BigInt(limits.minTransferUakt),
+    max: BigInt(limits.maxTransferUakt),
   };
 }
 export function boundsHelp(limits: Limits | undefined) {
-  const daily = dailyLimit(limits);
-  const perDay =
-    daily === null
-      ? ""
-      : ` Up to ${displayAmount(daily)} AKT per account each UTC day.`;
-  return transferHelp(limits) + perDay;
-}
-function transferHelp(limits: Limits | undefined) {
-  const { min, max } = limits
-    ? transferBounds(limits)
-    : { min: null, max: null };
-  if (min !== null && max !== null)
-    return `From ${displayAmount(min)} to ${displayAmount(max)} AKT per transfer.`;
-  if (min !== null) return `At least ${displayAmount(min)} AKT per transfer.`;
-  if (max !== null) return `Up to ${displayAmount(max)} AKT per transfer.`;
-  return "No minimum or maximum.";
+  if (!limits) return "Transfer limits are loading.";
+  const { min, max } = transferBounds(limits);
+  return `From ${displayAmount(min)} to ${displayAmount(max)} AKT per transfer. Up to ${displayAmount(limits.maxDailyAmountPerAccountUakt)} AKT per account each UTC day.`;
 }
 export function boundsAnswer(limits: Limits | undefined) {
-  const { min, max } = limits
-    ? transferBounds(limits)
-    : { min: null, max: null };
-  const rule =
-    min !== null && max !== null
-      ? `Each transfer must be at least ${displayAmount(min)} AKT and can be up to ${displayAmount(max)} AKT`
-      : min !== null
-        ? `Each transfer must be at least ${displayAmount(min)} AKT. There’s no maximum`
-        : max !== null
-          ? `There’s no minimum. Each transfer can be up to ${displayAmount(max)} AKT`
-          : "";
-  const daily = dailyLimit(limits);
-  const perDay =
-    daily === null
-      ? ""
-      : ` Each account can send up to ${displayAmount(daily)} AKT in total each UTC day.`;
-  return rule
-    ? `${rule}, and your Keplr balance must cover the amount plus the Akash network fee. Max fills in the most you can send after the fee.${perDay}`
-    : daily === null
-      ? "No. Send any amount, as long as your Keplr balance covers the amount plus the Akash network fee. Max fills in the most you can send after the fee."
-      : `There’s no per-transfer minimum or maximum, and your Keplr balance must cover the amount plus the Akash network fee. Max fills in the most you can send after the fee.${perDay}`;
+  if (!limits) return "Transfer limits are loading.";
+  return `${boundsHelp(limits)} All accounts share a ${displayAmount(limits.maxDailyAmountTotalUakt)} AKT daily limit. Your balance must also cover the Akash network fee. Daily limits reset at midnight UTC; Solana mints can proceed as soon as the deposit proof is ready.`;
 }
+export const unknownDateLabel = "Date unavailable";
+export const unknownDateHelp =
+  "The network no longer keeps the date of this older transfer.";
 export function submittedLabel(iso: string, now = new Date()) {
   const date = new Date(iso);
   const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
@@ -103,7 +66,7 @@ export function transactionLink(hash: string, networkKey: string) {
   return `#tx/${txHash(hash)}?network=${encodeURIComponent(networkKey)}`;
 }
 export function recordLink(id: string, networkKey: string) {
-  return `#record/${parseSinkId(id)}?network=${encodeURIComponent(networkKey)}`;
+  return `#record/${encodeURIComponent(parseSinkId(id))}?network=${encodeURIComponent(networkKey)}`;
 }
 function routeNetwork(query: string) {
   const entries = [...new URLSearchParams(query).entries()];
@@ -131,7 +94,11 @@ export function portalRoute(hash: string) {
     const networkKey = routeNetwork(query);
     return prefix === "#tx/"
       ? ({ kind: "transaction", hash: txHash(path), networkKey } as const)
-      : ({ kind: "record", id: parseSinkId(path), networkKey } as const);
+      : ({
+          kind: "record",
+          id: parseSinkId(decodeURIComponent(path)),
+          networkKey,
+        } as const);
   } catch {
     return { kind: "invalid" } as const;
   }
@@ -141,8 +108,25 @@ export interface TransferObservation {
   receipt: BridgeReceipt | null;
   error: string;
 }
+export function submissionId(saved: SavedSubmission): string {
+  return saved.txHash ?? saved.transferId;
+}
+export function submissionLookup(saved: SavedSubmission) {
+  return saved.version === 2 && saved.transferId
+    ? { kind: "transfer" as const, id: saved.transferId }
+    : { kind: "transaction" as const, hash: submissionId(saved) };
+}
 export function transferKey(saved: SavedSubmission) {
-  return JSON.stringify([saved.networkKey, saved.txHash]);
+  return JSON.stringify([saved.networkKey, submissionId(saved)]);
+}
+// A discovered record without a time predates every block the node keeps, so
+// it follows the dated rows, newest ledger ID first.
+function newestFirst(a: SavedSubmission, b: SavedSubmission) {
+  if (a.createdAt !== null && b.createdAt !== null)
+    return Date.parse(b.createdAt) - Date.parse(a.createdAt);
+  if (a.createdAt !== null) return -1;
+  if (b.createdAt !== null) return 1;
+  return compareSinkIds(submissionId(b), submissionId(a));
 }
 export function visibleTransfers(
   submissions: SavedSubmission[],
@@ -154,7 +138,7 @@ export function visibleTransfers(
       (item) =>
         item.networkKey === networkKey && (!sender || item.sender === sender),
     )
-    .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    .sort(newestFirst);
 }
 
 // Four user-facing steps: validation pending, validated (deposit recorded on
@@ -204,7 +188,7 @@ function receiptStep(receipt: BridgeReceipt | null): TransferStatus["step"] {
   if (receipt.solana.kind === "minted") return 4;
   if (
     receipt.akash.status === "refunded" ||
-    receipt.akash.status === "voided" ||
+    receipt.akash.status === "refund_pending" ||
     receipt.solana.kind === "voided"
   )
     return 0;
@@ -284,7 +268,10 @@ export function transferStatus(
       retryable: true,
       settled: true,
     };
-  if (receipt.solana.kind === "voided" || receipt.akash.status === "voided")
+  if (
+    receipt.solana.kind === "voided" ||
+    receipt.akash.status === "refund_pending"
+  )
     return {
       ...base,
       label: "Refund pending",

@@ -32,12 +32,12 @@ export class TransfersSection {
 
   rowByHash(hash: string) {
     return this.table.getByRole("row", {
-      name: new RegExp(`View transaction ${hash}$`),
+      name: new RegExp(`View transfer ${hash}$`),
     });
   }
 
   viewLink(scope: Locator, hash: string) {
-    return scope.getByRole("link", { name: `View transaction ${hash}` });
+    return scope.getByRole("link", { name: `View transfer ${hash}` });
   }
 
   retryButton(scope: Locator) {

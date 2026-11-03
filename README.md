@@ -8,8 +8,8 @@ module and `contracts/solana`.
 
 The app is static. It reads `/api/config`, `/api/status`, `/api/receipt` and
 `/api/transfers` from its server and reaches Akash through `/rpc` and `/rest`
-on the same origin. [`contracts.ts`](contracts.ts) defines and validates those
-responses.
+on the same origin. [`contracts.ts`](contracts.ts) defines those responses; [`model.ts`](model.ts) validates them. The current
+API version is 2 and requires the composite-ID sink schema.
 
 ## Build
 
@@ -42,3 +42,37 @@ page. Without `TEST_WALLET_MNEMONIC` only read-only specs run.
 
 Apache 2.0. The Geist and Inter fonts in `public/assets` use the SIL Open Font
 License; see the files next to them.
+
+## Transfer identity and history
+
+Transfer IDs are `owner/height/sequence`. All three components identify the
+record; height and sequence are parsed as bigint, never JavaScript numbers.
+Receipt links encode the whole ID and include the network identity. A receipt
+must agree with the ID's owner and creation height and the signed destination
+and amount.
+
+The receipt API exposes `transfer_pending`, `minted`, `refund_pending` and
+`refunded` separately from `none`, `veto` or `conflict` holds. A paid refund or
+mint can still need dispute resolution. Passing a challenge deadline does not
+prove that the refund was paid.
+
+`GET /api/transfers?sender=<owner>` returns the owner's newest 100 records at
+one committed height, newest first, with a required `truncated` flag. Older
+transfers remain accessible by ID or transaction hash. Discovered rows have
+`txHash: null` and a composite `transferId`. Their `createdAt` is null only when
+the creation block predates the node's retained history. Undated rows appear
+last in ledger-ID order, newest first, with "Date unavailable".
+
+The portal keeps discovered rows in memory and merges them with matching signed
+submissions. Browser storage keeps only submissions signed in this browser;
+discovery cannot evict pending, rejected or older-network receipts. Transaction
+lookup still binds the signed message and response to the committed record.
+
+Version-2 history uses `akt-bridge-submissions-v2`. The previous
+`akt-bridge-submissions-v1` entry remains read-only. Older numeric IDs are never
+interpreted as composite IDs or sent to the new chain.
+
+All displayed limits are positive uakt amounts: minimum and maximum per
+transfer, account daily cap and aggregate daily cap. Both send limits reset
+at midnight UTC. They do not schedule Solana mints, which can run immediately
+under their independent amount caps.

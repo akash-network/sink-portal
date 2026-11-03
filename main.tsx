@@ -31,8 +31,13 @@ import {
   portalRoute,
   shortAddress,
   shortHash,
+  shortenIdentifier,
+  submissionId,
+  recordLink,
   stageGuide,
   submittedLabel,
+  unknownDateHelp,
+  unknownDateLabel,
   transactionLink,
   transferEstimate,
   type StatusTone,
@@ -94,7 +99,7 @@ function cardId(hash: string) {
   return `tc-${hash}`;
 }
 function idLabel(item: TransferItem) {
-  return item.transferId ?? shortHash(item.txHash);
+  return item.transferId ?? shortHash(submissionId(item));
 }
 
 function ThemeControl() {
@@ -931,7 +936,7 @@ function Receipt({
           {item?.transferId ? (
             <span
               id={`receipt-id${suffix}`}
-              className="mono text-[22px] leading-[28px] font-medium tracking-[0.02em]"
+              className="mono min-w-0 break-all text-[14px] leading-[22px] font-medium"
             >
               {item.transferId}
             </span>
@@ -1010,16 +1015,20 @@ function Receipt({
 }
 
 function ViewLink({ item }: { item: TransferItem }) {
+  const id = submissionId(item);
+  const link =
+    item.txHash !== null
+      ? transactionLink(item.txHash, item.networkKey)
+      : recordLink(item.transferId, item.networkKey);
   return (
     <a
-      href={transactionLink(item.txHash, item.networkKey)}
-      data-tx={item.txHash}
-      title={item.txHash}
-      aria-label={`View transaction ${item.txHash}`}
+      href={link}
+      data-tx={item.txHash ?? undefined}
+      title={id}
+      aria-label={`View transfer ${id}`}
       className="inline-flex items-center gap-1 text-[13px]"
     >
-      View
-      <ExternalLink className="ico size-3.5" aria-hidden="true" />
+      View <ExternalLink className="ico size-3.5" aria-hidden="true" />
     </a>
   );
 }
@@ -1047,14 +1056,10 @@ function Transfers({
     if (found.kind === "local") {
       const item = bridge
         .getSnapshot()
-        .submissions.find((saved) => saved.txHash === found.txHash);
-      setHighlight(found.txHash);
+        .submissions.find((saved) => submissionId(saved) === found.id);
+      setHighlight(found.id);
       setTrackMsg(item ? `${idLabel(item)} · ${item.status.label}` : "");
-      show(
-        isPhone() ? cardId(found.txHash) : rowId(found.txHash),
-        null,
-        "nearest",
-      );
+      show(isPhone() ? cardId(found.id) : rowId(found.id), null, "nearest");
     } else if (found.kind === "remote") {
       setHighlight("");
       setTrackMsg("");
@@ -1071,7 +1076,11 @@ function Transfers({
           <h2 id="list-h" className="display text-2xl leading-8" tabIndex={-1}>
             Your transfers
           </h2>
-          <span className="help">Saved in this browser</span>
+          <span className="help">
+            {state.sender
+              ? "From this browser and your Keplr account"
+              : "Saved in this browser"}
+          </span>
         </div>
         <form
           className="flex w-full max-w-[440px] flex-col gap-1.5"
@@ -1112,6 +1121,16 @@ function Transfers({
           {trackMsg}
         </p>
       )}
+      {state.legacyHistoryCount > 0 && (
+        <p role="status" className="help">
+          {state.legacyHistoryCount}{" "}
+          {state.legacyHistoryCount === 1
+            ? "transfer from the previous bridge is"
+            : "transfers from the previous bridge are"}{" "}
+          preserved in this browser. Their numeric IDs belong to the original
+          network.
+        </p>
+      )}
       {state.historyError && (
         <p role="alert" className="err">
           {state.historyError}
@@ -1120,6 +1139,12 @@ function Transfers({
       {state.discoveryError && (
         <p role="status" className="help">
           Wallet history unavailable: {state.discoveryError}
+        </p>
+      )}
+      {state.historyTruncated && (
+        <p role="status" className="help">
+          Your 100 most recent transfers are listed. Track an older transfer by
+          its ledger ID or transaction hash.
         </p>
       )}
       {items.length === 0 ? (
@@ -1150,15 +1175,15 @@ function Transfers({
               </div>
               <div role="rowgroup">
                 {items.map((item) => {
-                  const key = `row-${item.txHash}`;
+                  const key = `row-${submissionId(item)}`;
                   return (
                     <div
-                      key={item.txHash}
-                      id={rowId(item.txHash)}
-                      className={`tbl-row tbl-tr ${highlight === item.txHash ? "hl" : ""}`}
+                      key={submissionId(item)}
+                      id={rowId(submissionId(item))}
+                      className={`tbl-row tbl-tr ${highlight === submissionId(item) ? "hl" : ""}`}
                       role="row"
                       tabIndex={-1}
-                      data-transfer={item.txHash}
+                      data-transfer={submissionId(item)}
                     >
                       <div role="cell">
                         {item.transferId ? (
@@ -1173,7 +1198,9 @@ function Transfers({
                             }
                           >
                             <span className="mono">
-                              {copied === key ? "Copied" : item.transferId}
+                              {copied === key
+                                ? "Copied"
+                                : shortenIdentifier(item.transferId)}
                             </span>
                           </button>
                         ) : (
@@ -1191,12 +1218,18 @@ function Transfers({
                         {shortAddress(item.recipient)}
                       </div>
                       <div role="cell" className="muted">
-                        <time
-                          dateTime={item.createdAt}
-                          title={new Date(item.createdAt).toLocaleString()}
-                        >
-                          {submittedLabel(item.createdAt)}
-                        </time>
+                        {item.createdAt ? (
+                          <time
+                            dateTime={item.createdAt}
+                            title={new Date(item.createdAt).toLocaleString()}
+                          >
+                            {submittedLabel(item.createdAt)}
+                          </time>
+                        ) : (
+                          <span title={unknownDateHelp}>
+                            {unknownDateLabel}
+                          </span>
+                        )}
                       </div>
                       <div role="cell">
                         <div className="flex flex-col items-start gap-1.5">
@@ -1218,7 +1251,7 @@ function Transfers({
                             <button
                               type="button"
                               className="btn btn-out btn-sm"
-                              onClick={() => onRetry(item.txHash)}
+                              onClick={() => onRetry(submissionId(item))}
                               disabled={state.busy}
                             >
                               <RotateCcw className="ico" aria-hidden="true" />
@@ -1236,14 +1269,14 @@ function Transfers({
           </div>
           <ul className="plain show-sm flex flex-col gap-3">
             {items.map((item) => {
-              const key = `card-${item.txHash}`;
+              const key = `card-${submissionId(item)}`;
               return (
                 <li
-                  key={item.txHash}
-                  id={cardId(item.txHash)}
-                  className={`card flex flex-col gap-3.5 p-4 ${highlight === item.txHash ? "border-[var(--fg)]" : ""}`}
+                  key={submissionId(item)}
+                  id={cardId(submissionId(item))}
+                  className={`card flex flex-col gap-3.5 p-4 ${highlight === submissionId(item) ? "border-[var(--fg)]" : ""}`}
                   tabIndex={-1}
-                  data-transfer-card={item.txHash}
+                  data-transfer-card={submissionId(item)}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="mono text-base leading-6 font-medium">
@@ -1266,7 +1299,7 @@ function Transfers({
                       <button
                         type="button"
                         className="btn btn-out"
-                        onClick={() => onRetry(item.txHash)}
+                        onClick={() => onRetry(submissionId(item))}
                         disabled={state.busy}
                       >
                         <RotateCcw className="ico" aria-hidden="true" />
@@ -1279,7 +1312,9 @@ function Transfers({
                       <div className="flex min-w-0 items-baseline gap-2">
                         <span className="over">Ledger ID</span>
                         <span className="mono text-[13px] leading-[18px] font-medium">
-                          {item.transferId ?? "Assigning…"}
+                          {item.transferId
+                            ? shortenIdentifier(item.transferId)
+                            : "Assigning…"}
                         </span>
                       </div>
                       {item.transferId && (
@@ -1304,7 +1339,10 @@ function Transfers({
                         <span className="mono">
                           {shortAddress(item.recipient)}
                         </span>{" "}
-                        · {submittedLabel(item.createdAt)}
+                        ·{" "}
+                        {item.createdAt
+                          ? submittedLabel(item.createdAt)
+                          : unknownDateLabel}
                       </span>
                       <ViewLink item={item} />
                     </div>

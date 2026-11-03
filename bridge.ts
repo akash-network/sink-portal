@@ -7,18 +7,27 @@ import {
 } from "@cosmjs/stargate";
 import { Comet38Client, HttpClient } from "@cosmjs/tendermint-rpc";
 import { AuthInfo, TxBody, TxRaw } from "cosmjs-types/cosmos/tx/v1beta1/tx";
-import { MsgSink } from "@akashnetwork/chain-sdk/private-types/akash.v1";
+import {
+  DestType,
+  MsgSink,
+} from "@akashnetwork/chain-sdk/private-types/akash.v1";
 import {
   SINK_MSG_TYPE,
   sinkAminoTypes,
   sinkMessage,
   sinkRegistry,
 } from "./lib/sink";
-import type { BridgeConfig, SavedSubmission } from "./contracts";
+import type {
+  BridgeConfig,
+  DiscoveredSubmission,
+  SavedSubmission,
+  SignedSubmission,
+} from "./contracts";
 import {
   akashAddress,
   message,
   parseSaved,
+  parseSigned,
   publicKey,
   txHash,
   uint,
@@ -91,7 +100,7 @@ export function validateSigned(raw: TxRaw, intent: Intent): Uint8Array {
   const sink = MsgSink.decode(body.messages[0].value);
   if (
     sink.sender !== intent.sender ||
-    sink.destType !== 1 ||
+    sink.destType !== DestType.DEST_TYPE_SOLANA ||
     sink.dest !== intent.recipient ||
     sink.amount?.denom !== "uakt" ||
     sink.amount.amount !== intent.amountUakt
@@ -124,14 +133,14 @@ export interface SubmissionAdapters {
   generation(): number;
   now(): number;
   sign(intent: Intent): Promise<TxRaw>;
-  save(submission: SavedSubmission): void;
+  save(submission: SignedSubmission): void;
   broadcast(bytes: Uint8Array): Promise<string>;
   stage(message: string): void;
-  saved(submission: SavedSubmission): void;
+  saved(submission: SignedSubmission): void;
 }
 export type SubmissionResult = {
   kind: "accepted" | "ambiguous" | "rejected";
-  submission: SavedSubmission;
+  submission: SignedSubmission;
   message: string;
 };
 export async function submitIntent(
@@ -160,8 +169,8 @@ export async function submitIntent(
     ),
   ).toUpperCase();
   check();
-  const submission: SavedSubmission = {
-    version: 1,
+  const submission: SignedSubmission = {
+    version: 2,
     networkKey: intent.config.network.networkKey,
     txHash: hash,
     sender: intent.sender,
@@ -193,7 +202,7 @@ export async function submitIntent(
       error.code > 0
     ) {
       const reason = (error.log?.trim() || message(error)).slice(0, 2000);
-      const rejected: SavedSubmission = {
+      const rejected: SignedSubmission = {
         ...submission,
         broadcastRejection: { code: error.code, message: reason },
       };
@@ -217,11 +226,13 @@ export async function submitIntent(
     };
   }
 }
-export const STORAGE_KEY = "akt-bridge-submissions-v1";
-export function loadSubmissions(
+export const STORAGE_KEY = "akt-bridge-submissions-v2";
+export const LEGACY_STORAGE_KEY = "akt-bridge-submissions-v1";
+function readSubmissions(
   storage: Pick<Storage, "getItem">,
+  key: string,
 ): SavedSubmission[] {
-  const stored = storage.getItem(STORAGE_KEY);
+  const stored = storage.getItem(key);
   if (stored === null) return [];
   const decoded: unknown = JSON.parse(stored);
   if (!Array.isArray(decoded) || decoded.length > 100)
@@ -230,45 +241,92 @@ export function loadSubmissions(
     );
   return decoded.map(parseSaved);
 }
+export function loadSubmissions(
+  storage: Pick<Storage, "getItem">,
+): SavedSubmission[] {
+  return [
+    ...readSubmissions(storage, STORAGE_KEY),
+    ...readSubmissions(storage, LEGACY_STORAGE_KEY),
+  ];
+}
+function sameSubmission(a: SavedSubmission, b: SavedSubmission) {
+  return (
+    a.networkKey === b.networkKey &&
+    a.version === b.version &&
+    ((a.txHash !== null && a.txHash === b.txHash) ||
+      (a.transferId !== undefined && a.transferId === b.transferId))
+  );
+}
 export function saveSubmission(
   storage: Pick<Storage, "getItem" | "setItem">,
-  submission: SavedSubmission,
+  signed: SignedSubmission,
 ): void {
-  const existing = loadSubmissions(storage);
-  const previous = existing.find(
-    (item) =>
-      item.txHash === submission.txHash &&
-      item.networkKey === submission.networkKey,
-  );
-  if (
-    previous &&
-    (previous.sender !== submission.sender ||
+  let submission = parseSigned(signed);
+  const existing = readSubmissions(storage, STORAGE_KEY);
+  const matches = existing.filter((item) => sameSubmission(item, submission));
+  for (const previous of matches) {
+    if (
+      previous.sender !== submission.sender ||
       previous.recipient !== submission.recipient ||
-      previous.amountUakt !== submission.amountUakt)
-  )
-    throw new Error("Saved transfer details changed");
-  if (previous?.transferId) {
-    if (submission.transferId && submission.transferId !== previous.transferId)
+      previous.amountUakt !== submission.amountUakt
+    )
+      throw new Error("Saved transfer details changed");
+    if (
+      previous.transferId &&
+      submission.transferId &&
+      previous.transferId !== submission.transferId
+    )
       throw new Error("Saved transfer ID changed");
-    submission = { ...submission, transferId: previous.transferId };
+    if (
+      previous.txHash &&
+      submission.txHash &&
+      previous.txHash !== submission.txHash
+    )
+      throw new Error("Saved transaction hash changed");
+    submission = parseSigned({
+      ...previous,
+      ...submission,
+      transferId: submission.transferId ?? previous.transferId,
+    });
   }
   const next = [
     submission,
-    ...existing.filter(
-      (item) =>
-        item.txHash !== submission.txHash ||
-        item.networkKey !== submission.networkKey,
-    ),
+    ...existing.filter((item) => !sameSubmission(item, submission)),
   ].slice(0, 100);
   storage.setItem(STORAGE_KEY, JSON.stringify(next));
   if (
-    !loadSubmissions(storage).some(
-      (item) =>
-        item.txHash === submission.txHash &&
-        item.networkKey === submission.networkKey,
+    !readSubmissions(storage, STORAGE_KEY).some((item) =>
+      sameSubmission(item, submission),
     )
   )
     throw new Error("Could not verify saved transaction history");
+}
+// Discovered records stay in memory: the chain can list them again, and
+// storage keeps only what this browser signed. A saved copy takes precedence.
+export function mergeDiscovered(
+  saved: SavedSubmission[],
+  discovered: DiscoveredSubmission[],
+): SavedSubmission[] {
+  return [
+    ...saved,
+    ...discovered.filter(
+      (found) => !saved.some((item) => sameSubmission(item, found)),
+    ),
+  ];
+}
+export function checkDiscovered(
+  saved: SavedSubmission[],
+  discovered: DiscoveredSubmission[],
+): void {
+  for (const found of discovered)
+    for (const item of saved)
+      if (
+        sameSubmission(item, found) &&
+        (item.sender !== found.sender ||
+          item.recipient !== found.recipient ||
+          item.amountUakt !== found.amountUakt)
+      )
+        throw new Error("History does not match a transfer saved here");
 }
 export function keplrProvider(): KeplrProvider {
   const provider = window.keplr;
@@ -422,7 +480,7 @@ export async function signDeposit(
     [
       sinkMessage({
         sender: intent.sender,
-        dest: intent.recipient,
+        recipient: intent.recipient,
         amountUakt: intent.amountUakt,
       }),
     ],

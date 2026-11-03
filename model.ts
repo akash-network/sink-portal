@@ -1,13 +1,15 @@
 import { fromBech32, toBech32 } from "@cosmjs/encoding";
 import { base58 } from "@scure/base";
 import { ed25519 } from "@noble/curves/ed25519";
-import { parseSinkId } from "./lib/sink";
+import { decodeSinkId, parseSinkId } from "./lib/id";
 import type {
   BridgeConfig,
   BridgeReceipt,
   ReceiptLookup,
   SavedSubmission,
+  SignedSubmission,
   SolanaReceipt,
+  TransferHistory,
 } from "./contracts";
 
 export function record(value: unknown): Record<string, unknown> {
@@ -21,8 +23,13 @@ export function text(value: unknown, label = "value", max = 512): string {
   return value;
 }
 export function uint(value: unknown, label = "amount"): string {
-  const result = text(value, label, 32);
+  const result = text(value, label, 78);
   if (!/^(0|[1-9]\d*)$/.test(result)) throw new Error(`Invalid ${label}`);
+  return result;
+}
+function positive(value: unknown): string {
+  const result = uint(value);
+  if (BigInt(result) === 0n) throw new Error("Amount limit must be positive");
   return result;
 }
 function integer(value: unknown): number {
@@ -49,6 +56,7 @@ export function akashAddress(value: unknown): string {
   if (
     decoded.prefix !== "akash" ||
     decoded.data.length !== 20 ||
+    decoded.data.every((byte) => byte === 0) ||
     toBech32("akash", decoded.data) !== address
   )
     throw new Error("Invalid Akash wallet address");
@@ -195,7 +203,7 @@ export function parseConfig(value: unknown): BridgeConfig {
     f = record(v.fee),
     l = record(v.limits);
   if (
-    v.version !== 1 ||
+    v.version !== 2 ||
     v.denom !== "uakt" ||
     v.decimals !== 6 ||
     v.rpcPath !== "/rpc/akash" ||
@@ -225,8 +233,23 @@ export function parseConfig(value: unknown): BridgeConfig {
     throw new Error("Inconsistent network identity");
   const fee = { amountUakt: uint(f.amountUakt), gas: uint(f.gas, "gas") };
   if (BigInt(fee.gas) === 0n) throw new Error("Invalid transaction gas");
+  const limits = {
+    enabled: bool(l.enabled),
+    minTransferUakt: positive(l.minTransferUakt),
+    maxTransferUakt: positive(l.maxTransferUakt),
+    maxDailyAmountPerAccountUakt: positive(l.maxDailyAmountPerAccountUakt),
+    maxDailyAmountTotalUakt: positive(l.maxDailyAmountTotalUakt),
+  };
+  const maximum = BigInt(limits.maxTransferUakt);
+  if (
+    BigInt(limits.minTransferUakt) > maximum ||
+    maximum > 0xffffffffffffffffn ||
+    maximum > BigInt(limits.maxDailyAmountPerAccountUakt) ||
+    maximum > BigInt(limits.maxDailyAmountTotalUakt)
+  )
+    throw new Error("Inconsistent transfer limits");
   return {
-    version: 1,
+    version: 2,
     checkedAt: iso(v.checkedAt),
     akashHeight: uint(v.akashHeight, "height"),
     network,
@@ -235,18 +258,7 @@ export function parseConfig(value: unknown): BridgeConfig {
     denom: "uakt",
     decimals: 6,
     fee,
-    limits: {
-      enabled: bool(l.enabled),
-      minTransferUakt:
-        l.minTransferUakt === undefined ? "0" : uint(l.minTransferUakt),
-      maxTransferUakt: uint(l.maxTransferUakt),
-      maxDailyPerAccount: integer(l.maxDailyPerAccount),
-      maxPendingPerAccount: integer(l.maxPendingPerAccount),
-      maxDailyAmountPerAccountUakt:
-        l.maxDailyAmountPerAccountUakt === undefined
-          ? "0"
-          : uint(l.maxDailyAmountPerAccountUakt),
-    },
+    limits,
     client: parseClient(v.client),
   };
 }
@@ -305,9 +317,9 @@ function parseSolana(value: unknown): SolanaReceipt {
 }
 export function parseReceipt(value: unknown): BridgeReceipt {
   const v = record(value);
-  if (v.version !== 1) throw new Error("Unsupported receipt version");
+  if (v.version !== 2) throw new Error("Unsupported receipt version");
   const base = {
-    version: 1 as const,
+    version: 2 as const,
     networkKey: text(v.networkKey, "network identity", 700),
     checkedAt: iso(v.checkedAt),
   };
@@ -329,22 +341,14 @@ export function parseReceipt(value: unknown): BridgeReceipt {
   const d = record(v.deposit),
     a = record(v.akash);
   if (
-    a.status !== "pending" &&
+    a.status !== "transfer_pending" &&
     a.status !== "minted" &&
-    a.status !== "voided" &&
+    a.status !== "refund_pending" &&
     a.status !== "refunded"
   )
     throw new Error("Unknown Akash settlement");
   if (a.hold !== "none" && a.hold !== "veto" && a.hold !== "conflict")
     throw new Error("Unknown transfer hold");
-  const expectedSinkStatus =
-    a.status === "pending"
-      ? "transfer_pending"
-      : a.status === "minted"
-        ? "completed"
-        : "void";
-  if (a.sinkStatus !== expectedSinkStatus)
-    throw new Error("Sink status disagrees with settlement");
   const deposit = {
     id: parseSinkId(d.id),
     sender: akashAddress(d.sender),
@@ -352,12 +356,24 @@ export function parseReceipt(value: unknown): BridgeReceipt {
     amountUakt: uint(d.amountUakt),
     height: uint(d.height, "deposit height"),
   };
-  if (
-    BigInt(deposit.id) === 0n ||
-    BigInt(deposit.amountUakt) === 0n ||
-    BigInt(deposit.height) === 0n
-  )
+  if (BigInt(deposit.amountUakt) === 0n || BigInt(deposit.height) === 0n)
     throw new Error("Invalid deposit record");
+  const id = decodeSinkId(deposit.id);
+  if (id.owner !== deposit.sender || id.height.toString() !== deposit.height)
+    throw new Error("Transfer identity disagrees with deposit");
+  const height = positive(a.height),
+    timeSeconds = uint(a.timeSeconds, "chain time");
+  if (BigInt(height) < id.height)
+    throw new Error("Settlement predates deposit");
+  const challengeEndSeconds =
+    a.challengeEndSeconds === null ? null : positive(a.challengeEndSeconds);
+  if (
+    (a.status === "refund_pending") !== (challengeEndSeconds !== null) ||
+    (a.hold === "veto" &&
+      a.status !== "refund_pending" &&
+      a.status !== "transfer_pending")
+  )
+    throw new Error("Inconsistent refund state");
   const solana = parseSolana(v.solana);
   if (
     (solana.kind === "minted" || solana.kind === "voided") &&
@@ -371,22 +387,19 @@ export function parseReceipt(value: unknown): BridgeReceipt {
     deposit,
     solana,
     akash: {
-      height: uint(a.height, "Akash height"),
-      timeSeconds: uint(a.timeSeconds, "chain time"),
+      height,
+      timeSeconds,
       status: a.status,
-      sinkStatus: expectedSinkStatus,
       hold: a.hold,
-      challengeEndSeconds:
-        a.challengeEndSeconds === null
-          ? null
-          : uint(a.challengeEndSeconds, "challenge deadline"),
+      challengeEndSeconds,
       refundsEnabled: bool(a.refundsEnabled),
     },
   };
 }
 export function parseSaved(value: unknown): SavedSubmission {
   const v = record(value);
-  if (v.version !== 1) throw new Error("Unsupported saved submission");
+  if (v.version !== 1 && v.version !== 2)
+    throw new Error("Unsupported saved submission");
   const amountUakt = uint(v.amountUakt);
   if (BigInt(amountUakt) === 0n) throw new Error("Invalid saved amount");
   let broadcastRejection: SavedSubmission["broadcastRejection"];
@@ -399,20 +412,97 @@ export function parseSaved(value: unknown): SavedSubmission {
       message: text(rejection.message, "broadcast rejection", 2000),
     };
   }
-  return {
-    version: 1,
+  const details = {
     networkKey: text(v.networkKey, "network identity", 700),
-    txHash: txHash(v.txHash),
     sender: akashAddress(v.sender),
     // History shows any destination Akash accepted, including allowlisted
     // vaults and point encodings that the stricter form check rejects.
     recipient: publicKey(v.recipient),
     amountUakt,
-    createdAt: iso(v.createdAt),
-    ...(v.transferId !== undefined
-      ? { transferId: parseSinkId(v.transferId) }
-      : {}),
     ...(broadcastRejection ? { broadcastRejection } : {}),
+  };
+  if (v.version === 1) {
+    const transferId =
+      v.transferId === undefined
+        ? undefined
+        : uint(v.transferId, "legacy transfer ID");
+    if (
+      transferId !== undefined &&
+      (BigInt(transferId) === 0n || BigInt(transferId) > 0xffffffffffffffffn)
+    )
+      throw new Error("Invalid legacy transfer ID");
+    return {
+      ...details,
+      createdAt: iso(v.createdAt),
+      version: 1,
+      txHash: txHash(v.txHash),
+      ...(transferId ? { transferId } : {}),
+    };
+  }
+  const transferId =
+    v.transferId === undefined ? undefined : parseSinkId(v.transferId);
+  if (transferId && decodeSinkId(transferId).owner !== details.sender)
+    throw new Error("Saved transfer owner mismatch");
+  if (v.txHash === null) {
+    if (!transferId || broadcastRejection)
+      throw new Error("Invalid discovered transfer");
+    return {
+      ...details,
+      createdAt: v.createdAt === null ? null : iso(v.createdAt),
+      version: 2,
+      txHash: null,
+      transferId,
+    };
+  }
+  return {
+    ...details,
+    createdAt: iso(v.createdAt),
+    version: 2,
+    txHash: txHash(v.txHash),
+    ...(transferId ? { transferId } : {}),
+  };
+}
+export function parseSigned(value: unknown): SignedSubmission {
+  const saved = parseSaved(value);
+  if (saved.version !== 2 || saved.txHash === null)
+    throw new Error("Only transfers signed in this browser are saved");
+  return saved;
+}
+export function parseHistory(
+  value: unknown,
+  networkKey: string,
+  sender: string,
+): TransferHistory {
+  const v = record(value);
+  if (
+    v.version !== 2 ||
+    v.networkKey !== networkKey ||
+    v.sender !== sender ||
+    !Array.isArray(v.transfers) ||
+    v.transfers.length > 100 ||
+    typeof v.truncated !== "boolean" ||
+    (v.truncated && v.transfers.length !== 100)
+  )
+    throw new Error("Unexpected wallet transfer history");
+  const transfers = v.transfers.map((item) => {
+    const saved = parseSaved(item);
+    if (
+      saved.version !== 2 ||
+      saved.txHash !== null ||
+      saved.networkKey !== networkKey ||
+      saved.sender !== sender
+    )
+      throw new Error("History does not match this wallet and network");
+    return saved;
+  });
+  if (new Set(transfers.map((item) => item.transferId)).size < transfers.length)
+    throw new Error("History repeats a transfer");
+  return {
+    version: 2,
+    networkKey,
+    sender,
+    transfers,
+    truncated: v.truncated,
   };
 }
 export function matchReceipt(
@@ -494,7 +584,7 @@ export function receiptView(
     a.hold === "none" ? "" : ` Akash has a ${a.hold} hold requiring review.`;
   if (
     (s.kind === "minted" &&
-      (a.status === "voided" || a.status === "refunded")) ||
+      (a.status === "refund_pending" || a.status === "refunded")) ||
     (s.kind === "voided" && a.status === "minted")
   )
     return {
@@ -508,7 +598,7 @@ export function receiptView(
   if (s.kind === "minted")
     return {
       title: "AKT received on Solana",
-      message: `${formatAmount(receipt.deposit.amountUakt)} AKT minted to your destination at finalized slot ${s.resolvedSlot}.${a.status === "pending" ? " Akash reporter confirmation is still pending." : ""}${hold}`,
+      message: `${formatAmount(receipt.deposit.amountUakt)} AKT minted to your destination at finalized slot ${s.resolvedSlot}.${a.status === "transfer_pending" ? " Akash reporter confirmation is still pending." : ""}${hold}`,
       tone: a.hold === "none" ? "success" : "warning",
       steps: ["complete", "complete", "complete"],
     };
@@ -528,7 +618,7 @@ export function receiptView(
         "complete",
       ],
     };
-  if (s.kind === "voided" || a.status === "voided") {
+  if (s.kind === "voided" || a.status === "refund_pending") {
     const deadline =
       a.challengeEndSeconds === null
         ? " Reporter confirmation is pending."
