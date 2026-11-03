@@ -4,10 +4,7 @@ import { handleBroadcasts, type BroadcastMode } from "./fixture/broadcast";
 import { formatAkt, readReceipt, type PortalNetwork } from "./fixture/network";
 import { testEnvConfig } from "./fixture/test-env.config";
 import { injectWallets } from "./fixture/wallet/inject-wallets";
-import {
-  solanaDestination,
-  VOIDED_SOLANA_ADDRESS,
-} from "./fixture/wallet/test-wallets";
+import { solanaDestination } from "./fixture/wallet/test-wallets";
 import { ReceiptDialog } from "./pages/ReceiptDialog";
 import { ReviewDialog } from "./pages/ReviewDialog";
 import { TransferPage } from "./pages/TransferPage";
@@ -128,11 +125,16 @@ test.describe("Transfers on the testnet", () => {
     network,
   }) => {
     test.setTimeout(30 * 60_000);
+    const destination = testEnvConfig.E2E_VOIDED_SOLANA_ADDRESS;
+    if (!destination)
+      throw new Error(
+        "Set E2E_VOIDED_SOLANA_ADDRESS to an on-curve SPL token account on this testnet",
+      );
     const transferPage = new TransferPage(page);
     const { broadcasts, receipt, transfers, amountUakt } = await submit(page, {
       mode: "observe",
       network,
-      destination: VOIDED_SOLANA_ADDRESS,
+      destination,
     });
     await expect(receipt.dialog).toHaveAccessibleName("Deposit submitted");
     await receipt.doneButton.click();
@@ -158,9 +160,7 @@ test.describe("Transfers on the testnet", () => {
 
     await transfers.retryButton(row).click();
 
-    await expect(transferPage.destinationInput).toHaveValue(
-      VOIDED_SOLANA_ADDRESS,
-    );
+    await expect(transferPage.destinationInput).toHaveValue(destination);
     await expect(transferPage.amountInput).toHaveValue(
       formatAkt(amountUakt).replace(/\.00$/, ""),
     );
