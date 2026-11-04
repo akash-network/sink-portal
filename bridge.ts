@@ -11,6 +11,7 @@ import {
   DestType,
   MsgSink,
 } from "@akashnetwork/chain-sdk/private-types/akash.v1";
+import { akashAddress } from "./lib/id";
 import {
   SINK_MSG_TYPE,
   sinkAminoTypes,
@@ -24,7 +25,6 @@ import type {
   SignedSubmission,
 } from "./contracts";
 import {
-  akashAddress,
   message,
   parseSaved,
   parseSigned,

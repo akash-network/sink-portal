@@ -212,6 +212,16 @@ function receipt(): Extract<BridgeReceipt, { kind: "deposit" }> {
     solana: { kind: "absent", contextSlot: "200" },
   };
 }
+test("receipts retain native 32-byte and maximum-length Akash owners", () => {
+  for (const length of [32, 255]) {
+    const owner = toBech32("akash", new Uint8Array(length).fill(7), 500);
+    const r = receipt();
+    r.deposit.sender = owner;
+    r.deposit.id = `${owner}/100/4`;
+    assert.deepEqual(parseReceipt(r), r);
+  }
+});
+
 test("amounts preserve every base unit and reject rounding or scientific notation", () => {
   assert.equal(parseAmount("1.000001"), 1_000_001n);
   assert.equal(parseAmount("0.000001"), 1n);

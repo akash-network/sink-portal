@@ -1,7 +1,6 @@
-import { fromBech32, toBech32 } from "@cosmjs/encoding";
 import { base58 } from "@scure/base";
 import { ed25519 } from "@noble/curves/ed25519";
-import { decodeSinkId, parseSinkId } from "./lib/id";
+import { akashAddress, decodeSinkId, parseSinkId } from "./lib/id";
 import type {
   BridgeConfig,
   BridgeReceipt,
@@ -49,18 +48,6 @@ function iso(value: unknown): string {
   )
     throw new Error("Invalid timestamp");
   return result;
-}
-export function akashAddress(value: unknown): string {
-  const address = text(value, "Akash address", 90);
-  const decoded = fromBech32(address, 90);
-  if (
-    decoded.prefix !== "akash" ||
-    decoded.data.length !== 20 ||
-    decoded.data.every((byte) => byte === 0) ||
-    toBech32("akash", decoded.data) !== address
-  )
-    throw new Error("Invalid Akash wallet address");
-  return address;
 }
 export function publicKey(value: unknown, wallet = false): string {
   const address = text(value, "Solana address", 44);

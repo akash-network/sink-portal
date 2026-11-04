@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { toBech32 } from "@cosmjs/encoding";
-import { decodeSinkId, parseSinkId, sinkIdText } from "./lib/id";
+import { akashAddress, decodeSinkId, parseSinkId, sinkIdText } from "./lib/id";
 import { portalRoute, recordLink } from "./transfers";
 
 const owner = toBech32("akash", new Uint8Array(20).fill(1));
@@ -36,8 +36,24 @@ test("composite IDs reject ambiguous, out-of-range and legacy identities", () =>
     `${owner}/1/1/2`,
     `${owner}/1/1 `,
     `${owner.toUpperCase()}/1/1`,
-    `${toBech32("akash", new Uint8Array(20))}/1/1`,
+    `${toBech32("akash", new Uint8Array())}/1/1`,
+    `${toBech32("akash", new Uint8Array(256).fill(1), 500)}/1/1`,
     `${toBech32("cosmos", new Uint8Array(20).fill(1))}/1/1`,
   ])
     assert.throws(() => parseSinkId(invalid), undefined, invalid);
 });
+
+for (const length of [1, 20, 32, 255]) {
+  test(`native ${length}-byte owners survive receipt links and ID parsing`, () => {
+    const owner = toBech32("akash", new Uint8Array(length), 500);
+    const id = `${owner}/7/8`;
+    assert.equal(akashAddress(owner), owner);
+    assert.equal(parseSinkId(id), id);
+    assert.equal(decodeSinkId(id).owner, owner);
+    assert.deepEqual(portalRoute(recordLink(id, "network")), {
+      kind: "record",
+      id,
+      networkKey: "network",
+    });
+  });
+}

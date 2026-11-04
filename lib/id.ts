@@ -1,8 +1,25 @@
 import { fromBech32, toBech32 } from "@cosmjs/encoding";
 import type { Sink_ID as ID } from "@akashnetwork/chain-sdk/private-types/akash.v1";
 
+const MAX_OWNER_BYTES = 255;
+const OWNER_BECH32_LIMIT = 5 + 1 + Math.ceil((MAX_OWNER_BYTES * 8) / 5) + 6;
+
 const MAX_HEIGHT = 0x7fffffffffffffffn;
 const MAX_SEQUENCE = 0xffffffffffffffffn;
+
+export function akashAddress(value: unknown): string {
+  if (typeof value !== "string" || value.length > OWNER_BECH32_LIMIT)
+    throw new Error("Invalid Akash wallet address");
+  const address = fromBech32(value, OWNER_BECH32_LIMIT);
+  if (
+    address.prefix !== "akash" ||
+    address.data.length === 0 ||
+    address.data.length > MAX_OWNER_BYTES ||
+    toBech32("akash", address.data, OWNER_BECH32_LIMIT) !== value
+  )
+    throw new Error("Invalid Akash wallet address");
+  return value;
+}
 
 export function decodeSinkId(value: unknown): ID {
   if (typeof value !== "string") throw new Error("Invalid transfer ID");
@@ -10,12 +27,8 @@ export function decodeSinkId(value: unknown): ID {
   if (parts.length !== 3)
     throw new Error("Transfer ID must be owner/height/sequence");
   const [owner, height, sequence] = parts;
-  const address = fromBech32(owner, 90);
+  akashAddress(owner);
   if (
-    address.prefix !== "akash" ||
-    address.data.length !== 20 ||
-    address.data.every((byte) => byte === 0) ||
-    toBech32("akash", address.data) !== owner ||
     !/^[1-9][0-9]{0,18}$/.test(height) ||
     !/^[1-9][0-9]{0,19}$/.test(sequence) ||
     BigInt(height) > MAX_HEIGHT ||
