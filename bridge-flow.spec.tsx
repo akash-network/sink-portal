@@ -7,11 +7,12 @@ describe(BridgeFlow.name, () => {
   it("selects the Solana mint step by default", () => {
     setup();
 
+    expect(screen.getByRole("button", { name: /^5\. akt/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(
-      screen.getByRole("button", { name: /^5\. akt-solana/ }),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      screen.getByRole("heading", { name: "5. akt-solana → SPL Token" }),
+      screen.getByRole("heading", { name: "5. akt → SPL Token" }),
     ).toBeInTheDocument();
   });
 
@@ -26,9 +27,10 @@ describe(BridgeFlow.name, () => {
     expect(
       screen.getByRole("button", { name: /^3\. Relayer/ }),
     ).toHaveAttribute("aria-pressed", "true");
-    expect(
-      screen.getByRole("button", { name: /^5\. akt-solana/ }),
-    ).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByRole("button", { name: /^5\. akt/ })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 
   it.each(["{Enter}", " "])("selects a focused step with %s", async (key) => {
@@ -49,7 +51,7 @@ describe(BridgeFlow.name, () => {
     await user.keyboard("a");
 
     expect(
-      screen.getByRole("heading", { name: "5. akt-solana → SPL Token" }),
+      screen.getByRole("heading", { name: "5. akt → SPL Token" }),
     ).toBeInTheDocument();
   });
 

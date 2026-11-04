@@ -49,7 +49,7 @@ const steps = [
       "The deployed light client verifies validator signatures, voting power and trusted-set overlap from the configured checkpoint. Its stored app hash anchors ICS23 membership verification. Conflicting-header evidence freezes the client. Access-manager controls update roles; the initial checkpoint and upgrade authority remain trust assumptions.",
   },
   {
-    title: "akt-solana → SPL Token",
+    title: "akt → SPL Token",
     place: "Solana smart contracts",
     x: 750,
     y: 455,
