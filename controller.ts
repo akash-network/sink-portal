@@ -340,7 +340,7 @@ async function connectAkash() {
   akashConnecting = true;
   invalidate();
   const epoch = generation;
-  say("akash", "Approve the private testnet and connection in Keplr.", "info");
+  say("akash", "Approve Akash sandbox-2 and the connection in Keplr.", "info");
   try {
     const connected = await connectKeplr(config);
     if (generation !== epoch)

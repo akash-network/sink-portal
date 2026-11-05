@@ -1634,7 +1634,7 @@ function Developer({ state }: { state: BridgeState }) {
       <BridgeFlow />
       <Panel
         title="Network"
-        action={<Badge variant="outline">Private testnet</Badge>}
+        action={<Badge variant="outline">Public sandbox · sandbox-2</Badge>}
       >
         <p
           id="state"
@@ -1733,7 +1733,7 @@ function App() {
         <div className="wrap flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-5">
           <span className="help">Akash Sink · Akash → Solana, one way</span>
           <div className="flex items-center gap-2">
-            <span className="over">Private testnet</span>
+            <span className="over">Public sandbox · sandbox-2</span>
             <ThemeControl />
           </div>
         </div>

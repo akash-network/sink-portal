@@ -149,7 +149,7 @@ export function TransferDialog({
               {result.kind === "error"
                 ? result.message
                 : result.kind === "loading"
-                  ? "Reading the private testnet."
+                  ? "Reading sandbox-2."
                   : view?.tone === "success"
                     ? deposit?.solana.kind === "minted"
                       ? "Received in your Solana wallet."

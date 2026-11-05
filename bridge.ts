@@ -415,7 +415,7 @@ export async function connectKeplr(
   };
   await provider.experimentalSuggestChain({
     chainId: config.network.chainId,
-    chainName: "Akash Sink Private Testnet",
+    chainName: "Akash sandbox-2",
     rpc: new URL(config.rpcPath, location.origin).href,
     rest: new URL(config.restPath, location.origin).href,
     bip44: { coinType: 118 },
