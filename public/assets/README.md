@@ -27,4 +27,6 @@ The license texts have trailing whitespace removed; their wording is unchanged.
 
 `akash.svg` is the existing Akash mark from the local Akash website, `src/assets/akash-logo-primary.svg`.
 The header wordmark in `ui/logo.tsx` is the vector from the AKT Bridge Transfer design.
-No runtime font, image or analytics requests leave the portal.
+`wallets/phantom.svg` and `wallets/solflare.svg` are the bundled wallet marks from
+`@solana/connector` 0.3.0 (`src/lib/wallet/wallet-icon-overrides.ts`, Apache-2.0).
+Discovered wallets and Keplr provide their icons through their native connectors.

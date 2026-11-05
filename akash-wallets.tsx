@@ -6,10 +6,6 @@ import {
   keplrExtensionInfo,
 } from "@cosmos-kit/keplr-extension";
 import { KeplrMobileWallet, keplrMobileInfo } from "@cosmos-kit/keplr-mobile";
-import {
-  CosmostationExtensionWallet,
-  cosmostationExtensionInfo,
-} from "@cosmos-kit/cosmostation-extension";
 import QRCode from "qrcode";
 import { bridge, type BridgeState } from "./controller";
 import { Modal } from "./modal";
@@ -169,7 +165,7 @@ function WalletList({ state }: { state: BridgeState }) {
           .map((wallet) => (
             <button
               key={wallet.walletName}
-              className="btn btn-out"
+              className="btn btn-out wallet-option"
               disabled={state.akashConnecting || wallet.isWalletConnecting}
               onClick={() => {
                 setSelected(wallet);
@@ -194,21 +190,21 @@ function WalletList({ state }: { state: BridgeState }) {
                 });
               }}
             >
+              <img
+                src={
+                  typeof wallet.walletInfo.logo === "string"
+                    ? wallet.walletInfo.logo
+                    : wallet.walletInfo.logo?.major
+                }
+                alt=""
+                width={28}
+                height={28}
+                className="rounded-md"
+              />
               {wallet.walletPrettyName}
             </button>
           ))}
       </div>
-      {!projectId && (
-        <>
-          <button className="btn btn-out" disabled>
-            Keplr Mobile
-          </button>
-          <p className="help">
-            Mobile Akash pairing isn’t configured on this portal yet. Browser
-            extensions are available on desktop.
-          </p>
-        </>
-      )}
       {selected?.isModeWalletConnect && state.akashConnecting && (
         <Pairing wallet={selected} />
       )}
@@ -234,7 +230,6 @@ export default function AkashWallets({
   const wallets = useMemo(
     () => [
       new KeplrExtensionWallet(keplrExtensionInfo),
-      new CosmostationExtensionWallet(cosmostationExtensionInfo),
       ...(projectId ? [new KeplrMobileWallet(keplrMobileInfo)] : []),
     ],
     [],

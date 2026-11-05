@@ -25,7 +25,8 @@ await build({
   define: {
     "process.env.NODE_ENV": '"production"',
     WALLETCONNECT_PROJECT_ID: JSON.stringify(
-      process.env.WALLETCONNECT_PROJECT_ID ?? "",
+      process.env.WALLETCONNECT_PROJECT_ID ??
+        "56efcfb5328b74b47d3caf9c2f44acd9",
     ),
   },
   logLevel: "info",

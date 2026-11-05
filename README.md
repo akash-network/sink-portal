@@ -27,19 +27,18 @@ Serve `dist/` behind a server that provides the API above.
 
 ## Wallets
 
-- **Akash:** Cosmos Kit with Keplr, Cosmostation and Keplr Mobile through WalletConnect.
+- **Akash:** Cosmos Kit with Keplr and Keplr Mobile through WalletConnect.
 - **Solana:** Solana Foundation ConnectorKit discovers Wallet Standard wallets. Android uses Mobile Wallet Adapter; iPhone offers Phantom/Solflare wallet-browser links. Pasting an address always works.
 - Solana connections only read an address. Only the Akash wallet signs a transfer.
 
-For mobile Akash pairing, create a portal project in [Reown](https://dashboard.reown.com), allow the deployed origin and build with its public ID:
+Builds use the portal’s public Reown project ID. Allow the deployed origin in
+[Reown](https://dashboard.reown.com). To use a different project:
 
 ```bash
 WALLETCONNECT_PROJECT_ID=<portal-project-id> npm run build
 ```
 
-Without the ID, extension connections work and the mobile Akash choice is disabled.
-The ID is public configuration, not a private key. An arbitrary or another app’s ID
-is not a reliable substitute. Mobile wallets must also support the configured
+The ID is public configuration, not a private key. Mobile wallets must support the configured
 Akash chain; private fork support is not implied by mainnet support.
 
 Serve over HTTPS. The server’s `Content-Security-Policy` must allow the wallet

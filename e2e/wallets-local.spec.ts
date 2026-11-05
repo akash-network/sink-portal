@@ -70,7 +70,15 @@ for (const name of ["Phantom", "Solflare", "Backpack"] as const) {
     page,
   }) => {
     const { wallets, view, errors } = await setup(page, [name]);
-    await view.connectSolanaWallet(name);
+    await view.connectSolanaButton.click();
+    const icon = view.solanaWalletOption(name).locator("img");
+    await expect(icon).toBeVisible();
+    await expect
+      .poll(() =>
+        icon.evaluate((image: HTMLImageElement) => image.naturalWidth),
+      )
+      .toBeGreaterThan(0);
+    await view.solanaWalletOption(name).click();
     await expect(view.transferCard).toContainText(
       `${name} connected · read-only`,
     );
@@ -94,6 +102,17 @@ test("missing wallets offer paste and mobile browser links, not false installed 
   );
   await expect(view.destinationInput).toBeEnabled();
   if (isMobile) {
+    for (const name of ["Phantom", "Solflare"]) {
+      const icon = view.transferCard
+        .getByRole("link", { name: `Open in ${name}` })
+        .locator("img");
+      await expect(icon).toBeVisible();
+      await expect
+        .poll(() =>
+          icon.evaluate((image: HTMLImageElement) => image.naturalWidth),
+        )
+        .toBeGreaterThan(0);
+    }
     const href = await view.transferCard
       .getByRole("link", { name: "Open in Phantom" })
       .getAttribute("href");
@@ -119,14 +138,31 @@ test("an unsigned draft survives reload without reconnecting or sending", async 
   expect(errors).toEqual([]);
 });
 
-test("Akash mobile choice explains missing configuration", async ({ page }) => {
+test("Akash picker offers only Keplr with icons and mobile enabled", async ({
+  page,
+  isMobile,
+}) => {
   const { view, errors } = await setup(page);
   await view.connectKeplrButton.click();
   const dialog = page.getByRole("dialog", { name: "Connect an Akash wallet" });
-  await expect(
-    dialog.getByRole("button", { name: "Keplr Mobile", exact: true }),
-  ).toBeDisabled();
-  await expect(dialog).toContainText("Mobile Akash pairing isn’t configured");
+  const mobileWallet = dialog.getByRole("button", {
+    name: "Keplr Mobile",
+    exact: true,
+  });
+  await expect(mobileWallet).toBeEnabled();
+  await expect(dialog.getByRole("button")).toHaveText(
+    isMobile ? ["Close", "Keplr Mobile"] : ["Close", "Keplr", "Keplr Mobile"],
+  );
+  await expect(dialog).not.toContainText("isn’t configured");
+  const icons = dialog.locator("img");
+  await expect(icons).toHaveCount(isMobile ? 1 : 2);
+  for (const icon of await icons.all()) {
+    await expect
+      .poll(() =>
+        icon.evaluate((image: HTMLImageElement) => image.naturalWidth),
+      )
+      .toBeGreaterThan(0);
+  }
   expect(errors).toEqual([]);
 });
 

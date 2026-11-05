@@ -334,6 +334,11 @@
   .ab .btn-out:hover {
     background: var(--muted);
   }
+  .ab .wallet-option {
+    justify-content: flex-start;
+    gap: 12px;
+    height: 52px;
+  }
   .ab .btn-ghost {
     background: transparent;
     color: var(--fg);

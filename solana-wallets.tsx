@@ -30,7 +30,7 @@ function WalletList({
       {wallets.map((wallet) => (
         <button
           key={wallet.id}
-          className="btn btn-out"
+          className="btn btn-out wallet-option"
           disabled={!client || !wallet.ready}
           onClick={() => {
             if (client) {
@@ -39,6 +39,13 @@ function WalletList({
             }
           }}
         >
+          <img
+            src={wallet.icon}
+            alt=""
+            width={28}
+            height={28}
+            className="rounded-md"
+          />
           {wallet.name}
         </button>
       ))}
@@ -57,10 +64,17 @@ function WalletList({
           {(["Phantom", "Solflare"] as const).map((name) => (
             <a
               key={name}
-              className="btn btn-out"
+              className="btn btn-out wallet-option"
               href={mobileWalletUrl(name, state)}
               rel="noreferrer"
             >
+              <img
+                src={`/assets/wallets/${name.toLowerCase()}.svg`}
+                alt=""
+                width={28}
+                height={28}
+                className="rounded-md"
+              />
               Open in {name}
             </a>
           ))}
