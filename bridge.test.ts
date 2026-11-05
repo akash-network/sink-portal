@@ -42,7 +42,6 @@ import type {
 } from "./contracts";
 import {
   checkDiscovered,
-  connectSolanaWallet,
   loadSubmissions,
   LEGACY_STORAGE_KEY,
   mergeDiscovered,
@@ -733,7 +732,7 @@ test("MOCK adapter: ambiguous transmission retains hash and never retries", asyn
   assert.equal(broadcasts, 1);
   assert.equal(loadSubmissions(store)[0].txHash, result.submission.txHash);
 });
-test("pasted destinations need an on-curve wallet; wallets connect read-only", async () => {
+test("pasted destinations need an on-curve wallet", async () => {
   assert.deepEqual(checkDestination(""), { state: "empty" });
   assert.deepEqual(checkDestination("7xKXtg2CW87d97"), { state: "incomplete" });
   assert.deepEqual(
@@ -752,44 +751,6 @@ test("pasted destinations need an on-curve wallet; wallets connect read-only", a
     base58.encode(new Uint8Array(32).fill(i + 1)),
   ).find((value) => checkDestination(value).state === "account");
   assert.ok(offCurve, "Expected an off-curve 32-byte key");
-
-  const key = { toString: () => recipient };
-  const calls: string[] = [];
-  const provider = {
-    isPhantom: true,
-    publicKey: null as { toString(): string } | null,
-    connect: async () => {
-      provider.publicKey = key;
-      return { publicKey: key };
-    },
-    signMessage: async () => {
-      calls.push("signMessage");
-      throw new Error("Destination wallets must never be asked to sign");
-    },
-  };
-  const solflare = {
-    isSolflare: true,
-    publicKey: null as { toString(): string } | null,
-    connect: async () => {
-      solflare.publicKey = key;
-      return true;
-    },
-  };
-  const scope = globalThis as { window?: unknown };
-  const previousWindow = scope.window;
-  try {
-    scope.window = { phantom: { solana: provider }, solflare };
-    assert.equal((await connectSolanaWallet("Phantom")).address, recipient);
-    assert.equal((await connectSolanaWallet("Solflare")).address, recipient);
-    await assert.rejects(
-      connectSolanaWallet("Backpack"),
-      /Install the Backpack/,
-    );
-  } finally {
-    if (previousWindow === undefined) delete scope.window;
-    else scope.window = previousWindow;
-  }
-  assert.deepEqual(calls, []);
 });
 test("finalized mint is received while Akash reports lag; holds remain visible", () => {
   const r = receipt();

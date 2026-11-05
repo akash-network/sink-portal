@@ -16,26 +16,41 @@
     "test:spec": "vitest run",
     "test:e2e": "playwright test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:wallets": "WALLETCONNECT_PROJECT_ID= npm run build && playwright test -c playwright.wallets.config.ts"
   },
   "dependencies": {
     "@akashnetwork/chain-sdk": "file:.cache/chain-sdk.tgz",
+    "@bufbuild/protobuf": "2.16.0",
     "@cosmjs/encoding": "0.39.0",
     "@cosmjs/proto-signing": "0.39.0",
     "@cosmjs/stargate": "0.39.0",
     "@cosmjs/tendermint-rpc": "0.39.0",
+    "@cosmos-kit/core": "2.18.1",
+    "@cosmos-kit/cosmostation-extension": "2.18.1",
+    "@cosmos-kit/keplr-extension": "2.17.1",
+    "@cosmos-kit/keplr-mobile": "2.17.1",
+    "@cosmos-kit/react-lite": "2.18.1",
     "@noble/curves": "1.9.7",
     "@scure/base": "2.4.0",
+    "@solana/connector": "0.3.0",
+    "@solana/web3.js": "1.98.4",
+    "axios": "1.21.0",
+    "buffer": "6.0.3",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cosmjs-types": "0.11.0",
     "lucide-react": "1.57.0",
+    "process": "0.11.10",
+    "qrcode": "1.5.4",
     "radix-ui": "1.8.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "stream-browserify": "3.0.0",
     "tailwind-merge": "3.7.0"
   },
   "devDependencies": {
+    "@keplr-wallet/provider-extension": "0.12.313",
     "@playwright/test": "1.56.1",
     "@tailwindcss/postcss": "4.3.3",
     "@testing-library/dom": "10.4.2",
@@ -43,6 +58,7 @@
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.7",
     "@types/node": "24.19.1",
+    "@types/qrcode": "1.5.6",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "esbuild": "0.28.2",
@@ -56,6 +72,17 @@
     "typescript": "5.9.3",
     "vitest": "5.0.3",
     "vitest-mock-extended": "5.1.1",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
+  },
+  "overrides": {
+    "@cosmos-kit/core": {
+      "@cosmjs/amino": "0.39.0",
+      "@cosmjs/proto-signing": "$@cosmjs/proto-signing",
+      "@cosmjs/stargate": "$@cosmjs/stargate",
+      "@cosmjs/cosmwasm-stargate": "0.39.0"
+    },
+    "@solana/connector": {
+      "zod": "$zod"
+    }
   }
 }

@@ -104,11 +104,7 @@ async function connect(history: object) {
       throw new Error("This test never signs");
     },
   };
-  window.keplr = {
-    experimentalSuggestChain: async () => {},
-    enable: async () => {},
-    getOfflineSignerAuto: async () => signer,
-  };
+
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL) => {
@@ -129,11 +125,17 @@ async function connect(history: object) {
   const { bridge } = await import("./controller");
   const stop = bridge.start();
   await vi.waitFor(() => expect(bridge.getSnapshot().config).not.toBeNull());
-  await bridge.connectAkash();
+  await bridge.connectAkash({
+    id: "test-akash",
+    name: "Test wallet",
+    connect: async () => {},
+    getSigner: async () => signer,
+    disconnect: async () => {},
+  });
   await vi.waitFor(() =>
     expect(bridge.getSnapshot().discoveryBusy).toBe(false),
   );
-  return { bridge, stop };
+  return { bridge, stop, signer };
 }
 
 describe("wallet history discovery", () => {
@@ -226,5 +228,85 @@ describe("wallet history discovery", () => {
       expect(state.submissions).toEqual([]);
       stop();
     }
+  });
+});
+
+describe("wallet connection cancellation", () => {
+  let stop = () => {};
+  afterEach(() => {
+    stop();
+    vi.unstubAllGlobals();
+  });
+
+  it("does not adopt a wallet approved after the picker closes", async () => {
+    const connected = await connect({
+      version: 2,
+      networkKey,
+      sender,
+      transfers: [],
+      truncated: false,
+    });
+    stop = connected.stop;
+    const { bridge, signer } = connected;
+    bridge.disconnectAkash();
+    bridge.chooseAkashWallet();
+    let approve = () => {};
+    const approval = new Promise<void>((resolve) => {
+      approve = resolve;
+    });
+    const attempt = bridge.connectAkash({
+      id: "delayed",
+      name: "Delayed wallet",
+      connect: () => approval,
+      getSigner: async () => signer,
+      disconnect: async () => {},
+    });
+    expect(bridge.getSnapshot().akashConnecting).toBe(true);
+    bridge.closeAkashPicker();
+    approve();
+    await attempt;
+    expect(bridge.getSnapshot()).toMatchObject({
+      sender: null,
+      akashPicker: false,
+      akashConnecting: false,
+    });
+  });
+
+  it("does not let an old approval overwrite a newer wallet connection", async () => {
+    const connected = await connect({
+      version: 2,
+      networkKey,
+      sender,
+      transfers: [],
+      truncated: false,
+    });
+    stop = connected.stop;
+    const { bridge, signer } = connected;
+    bridge.disconnectAkash();
+    let approve = () => {};
+    const approval = new Promise<void>((resolve) => {
+      approve = resolve;
+    });
+    const old = bridge.connectAkash({
+      id: "old",
+      name: "Old wallet",
+      connect: () => approval,
+      getSigner: async () => signer,
+      disconnect: async () => {},
+    });
+    bridge.closeAkashPicker();
+    await bridge.connectAkash({
+      id: "new",
+      name: "New wallet",
+      connect: async () => {},
+      getSigner: async () => signer,
+      disconnect: async () => {},
+    });
+    approve();
+    await old;
+    bridge.akashAccountChanged("old", undefined);
+    expect(bridge.getSnapshot().sender).toBe(sender);
+    bridge.akashAccountChanged("new", undefined);
+    expect(bridge.getSnapshot().sender).toBeNull();
   });
 });

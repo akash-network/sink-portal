@@ -8,18 +8,37 @@ await mkdir("dist");
 await cp("public", "dist", { recursive: true });
 
 await build({
-  entryPoints: { app: "main.tsx", theme: "theme-init.ts" },
+  entryPoints: { app: "main.tsx" },
   tsconfig: "tsconfig.json",
+  bundle: true,
+  alias: { stream: "stream-browserify" },
+  inject: ["browser-globals.ts"],
+  platform: "browser",
+  target: "es2022",
+  format: "esm",
+  splitting: true,
+  chunkNames: "chunks/[name]-[hash]",
+  outdir: "dist",
+  minify: true,
+  sourcemap: false,
+  legalComments: "eof",
+  define: {
+    "process.env.NODE_ENV": '"production"',
+    WALLETCONNECT_PROJECT_ID: JSON.stringify(
+      process.env.WALLETCONNECT_PROJECT_ID ?? "",
+    ),
+  },
+  logLevel: "info",
+});
+
+await build({
+  entryPoints: { theme: "theme-init.ts" },
   bundle: true,
   platform: "browser",
   target: "es2022",
   format: "iife",
   outdir: "dist",
   minify: true,
-  sourcemap: false,
-  legalComments: "eof",
-  define: { "process.env.NODE_ENV": '"production"' },
-  logLevel: "info",
 });
 
 const css = await postcss([tailwind({ optimize: true })]).process(

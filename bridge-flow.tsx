@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const steps = [
   {
-    title: "Keplr + Phantom",
+    title: "Akash wallet + Phantom",
     place: "Browser",
     x: 390,
     y: 65,
@@ -13,7 +13,7 @@ const steps = [
       "No tokens move through the browser",
     ],
     detail:
-      "The user connects a Solana wallet or pastes a destination. Keplr signs MsgSink on Akash. The browser checks the signed sender, recipient, amount and fee, then saves the transaction hash before broadcast.",
+      "The user connects a Solana wallet or pastes a destination. Akash wallet signs MsgSink on Akash. The browser checks the signed sender, recipient, amount and fee, then saves the transaction hash before broadcast.",
   },
   {
     title: "x/sink",

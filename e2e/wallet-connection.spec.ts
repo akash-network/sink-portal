@@ -38,9 +38,15 @@ test.describe("Wallet connections", () => {
 
         await transferPage.connectKeplr();
 
-        await expect(transferPage.transferCard.getByRole("alert")).toHaveText(
-          "Request rejected",
-        );
+        await expect(
+          page
+            .getByRole("dialog", { name: "Connect an Akash wallet" })
+            .getByRole("alert"),
+        ).toHaveText("Request rejected");
+        await page
+          .getByRole("dialog", { name: "Connect an Akash wallet" })
+          .getByRole("button", { name: "Close", exact: true })
+          .click();
         await expect(transferPage.connectKeplrButton).toBeEnabled();
       });
     });
@@ -54,7 +60,7 @@ test.describe("Wallet connections", () => {
       await wallets.changeKeplrAccount();
 
       await expect(transferPage.transferCard).toContainText(
-        "Keplr account changed. Reconnect to confirm the sender.",
+        "Wallet account changed. Reconnect and review the transfer.",
       );
       await expect(transferPage.connectKeplrButton).toBeEnabled();
     });
@@ -132,14 +138,16 @@ test.describe("Wallet connections", () => {
     test.describe("when no Solana wallet is installed", () => {
       test.use({ solanaWallets: [] });
 
-      test("explains which extension is missing", async ({ page }) => {
+      test("offers an address fallback when no wallet is discovered", async ({
+        page,
+      }) => {
         const { transferPage } = await setup(page);
 
-        await transferPage.connectSolanaWallet("Phantom");
-
-        await expect(transferPage.transferCard.getByRole("alert")).toHaveText(
-          "Install the Phantom browser extension and open this page over HTTPS.",
+        await transferPage.connectSolanaButton.click();
+        await expect(transferPage.transferCard).toContainText(
+          "No wallet found in this browser",
         );
+        await expect(transferPage.destinationInput).toBeEnabled();
       });
     });
 

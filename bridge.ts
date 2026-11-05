@@ -33,39 +33,6 @@ import {
   uint,
 } from "./model";
 
-export interface KeplrProvider {
-  experimentalSuggestChain(config: unknown): Promise<void>;
-  enable(chainId: string): Promise<void>;
-  getOfflineSignerAuto?(
-    chainId: string,
-    options?: { preferNoSetMemo: boolean; preferNoSetFee: boolean },
-  ): Promise<OfflineSigner>;
-  getOfflineSigner?(
-    chainId: string,
-    options?: { preferNoSetMemo: boolean; preferNoSetFee: boolean },
-  ): OfflineSigner;
-}
-export const SOLANA_WALLETS = ["Phantom", "Solflare", "Backpack"] as const;
-export type SolanaWalletName = (typeof SOLANA_WALLETS)[number];
-// Read-only destination source. The portal only reads the public key; it never
-// asks the Solana wallet to sign, so any injected provider with connect() works.
-export interface SolanaProvider {
-  publicKey: { toString(): string } | null;
-  connect(): Promise<unknown>;
-  disconnect?(): Promise<unknown>;
-  on?(event: "accountChanged" | "disconnect", callback: () => void): void;
-  isPhantom?: boolean;
-  isSolflare?: boolean;
-  isBackpack?: boolean;
-}
-declare global {
-  interface Window {
-    keplr?: KeplrProvider;
-    phantom?: { solana?: SolanaProvider };
-    solflare?: SolanaProvider;
-    backpack?: SolanaProvider & { solana?: SolanaProvider };
-  }
-}
 export interface Intent {
   readonly config: BridgeConfig;
   readonly sender: string;
@@ -328,118 +295,16 @@ export function checkDiscovered(
       )
         throw new Error("History does not match a transfer saved here");
 }
-export function keplrProvider(): KeplrProvider {
-  const provider = window.keplr;
-  if (
-    !provider ||
-    typeof provider.experimentalSuggestChain !== "function" ||
-    typeof provider.enable !== "function" ||
-    (typeof provider.getOfflineSignerAuto !== "function" &&
-      typeof provider.getOfflineSigner !== "function")
-  )
-    throw new Error(
-      "Install the Keplr browser extension, then reload this page.",
-    );
-  return provider;
-}
-export function solanaProvider(name: SolanaWalletName): SolanaProvider {
-  const provider =
-    name === "Phantom"
-      ? window.phantom?.solana?.isPhantom
-        ? window.phantom.solana
-        : undefined
-      : name === "Solflare"
-        ? window.solflare?.isSolflare
-          ? window.solflare
-          : undefined
-        : (window.backpack?.solana ??
-          (window.backpack?.isBackpack ? window.backpack : undefined));
-  if (!provider || typeof provider.connect !== "function")
-    throw new Error(
-      `Install the ${name} browser extension and open this page over HTTPS.`,
-    );
-  return provider;
-}
-export async function connectSolanaWallet(
-  name: SolanaWalletName,
-): Promise<{ provider: SolanaProvider; address: string }> {
-  const provider = solanaProvider(name);
-  const connected = await provider.connect();
-  const reported =
-    connected &&
-    typeof connected === "object" &&
-    "publicKey" in connected &&
-    connected.publicKey
-      ? connected.publicKey
-      : provider.publicKey;
-  let address: string;
-  try {
-    address = publicKey(reported?.toString(), true);
-  } catch {
-    throw new Error(`${name} did not share a Solana wallet address`);
-  }
-  if (provider.publicKey && provider.publicKey.toString() !== address)
-    throw new Error(`${name} account changed during connection`);
-  return { provider, address };
-}
-export async function getSigner(
-  provider: KeplrProvider,
-  chainId: string,
-): Promise<OfflineSigner> {
-  const options = { preferNoSetMemo: true, preferNoSetFee: true };
-  if (provider.getOfflineSignerAuto)
-    return provider.getOfflineSignerAuto(chainId, options);
-  if (provider.getOfflineSigner)
-    return provider.getOfflineSigner(chainId, options);
-  throw new Error("Keplr does not expose a supported signer");
-}
 export async function signerAddress(signer: OfflineSigner): Promise<string> {
   const accounts = await signer.getAccounts();
   if (accounts.length !== 1 || accounts[0].algo !== "secp256k1")
-    throw new Error("Select one standard Akash account in Keplr");
+    throw new Error("Select one standard Akash account in your wallet");
   return akashAddress(accounts[0].address);
 }
 export function comet(config: BridgeConfig): Comet38Client {
   return Comet38Client.create(
     new HttpClient(new URL(config.rpcPath, location.origin).href, 15_000),
   );
-}
-export async function connectKeplr(
-  config: BridgeConfig,
-): Promise<{ address: string; signer: OfflineSigner }> {
-  const provider = keplrProvider();
-  const currency = {
-    coinDenom: "AKT",
-    coinMinimalDenom: "uakt",
-    coinDecimals: 6,
-  };
-  await provider.experimentalSuggestChain({
-    chainId: config.network.chainId,
-    chainName: "Akash Sink Private Testnet",
-    rpc: new URL(config.rpcPath, location.origin).href,
-    rest: new URL(config.restPath, location.origin).href,
-    bip44: { coinType: 118 },
-    bech32Config: {
-      bech32PrefixAccAddr: "akash",
-      bech32PrefixAccPub: "akashpub",
-      bech32PrefixValAddr: "akashvaloper",
-      bech32PrefixValPub: "akashvaloperpub",
-      bech32PrefixConsAddr: "akashvalcons",
-      bech32PrefixConsPub: "akashvalconspub",
-    },
-    currencies: [currency],
-    stakeCurrency: currency,
-    feeCurrencies: [
-      {
-        ...currency,
-        gasPriceStep: { low: 0.025, average: 0.025, high: 0.025 },
-      },
-    ],
-    features: [],
-  });
-  await provider.enable(config.network.chainId);
-  const signer = await getSigner(provider, config.network.chainId);
-  return { address: await signerAddress(signer), signer };
 }
 export async function readBalance(
   config: BridgeConfig,
@@ -474,7 +339,7 @@ export async function signDeposit(
     (await signerAddress(signer)) !== intent.sender ||
     (await client.getChainId()) !== intent.config.network.chainId
   )
-    throw new Error("Keplr account or Akash chain changed");
+    throw new Error("Wallet account or Akash chain changed");
   const raw = await client.sign(
     intent.sender,
     [
@@ -491,6 +356,6 @@ export async function signDeposit(
     "",
   );
   if ((await signerAddress(signer)) !== intent.sender)
-    throw new Error("Keplr account changed while signing");
+    throw new Error("Wallet account changed while signing");
   return raw;
 }

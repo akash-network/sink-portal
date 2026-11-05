@@ -1,4 +1,6 @@
+import { WalletLoader } from "./wallet-loader";
 import {
+  lazy,
   useEffect,
   useRef,
   useState,
@@ -44,7 +46,8 @@ import {
 } from "./transfers";
 import { TransferDialog } from "./transaction";
 import { BridgeFlow } from "./bridge-flow";
-import { SOLANA_WALLETS } from "./bridge";
+const AkashWallets = lazy(() => import("./akash-wallets"));
+const SolanaWallets = lazy(() => import("./solana-wallets"));
 import { bridge, type BridgeState, type TransferItem } from "./controller";
 import { clientPause, fresh } from "./model";
 import { Modal } from "./modal";
@@ -170,7 +173,7 @@ function Header({ state }: { state: BridgeState }) {
               className="btn btn-ghost btn-icon"
               onClick={bridge.disconnectAkash}
               disabled={state.busy}
-              aria-label="Disconnect Keplr"
+              aria-label="Disconnect Akash wallet"
             >
               <LogOut className="ico" aria-hidden="true" />
             </button>
@@ -180,11 +183,11 @@ function Header({ state }: { state: BridgeState }) {
             id="connect-keplr"
             type="button"
             className="btn btn-pri"
-            onClick={() => void bridge.connectAkash()}
+            onClick={() => bridge.chooseAkashWallet()}
             disabled={!state.canConnect}
           >
             <Wallet className="ico" aria-hidden="true" />
-            {state.akashConnecting ? "Connecting…" : "Connect Keplr"}
+            {state.akashConnecting ? "Connecting…" : "Connect Akash wallet"}
           </button>
         )}
       </div>
@@ -248,7 +251,7 @@ function Summary({
         </dd>
       </div>
       <div className="flex justify-between gap-3">
-        <dt className="muted">Total from Keplr</dt>
+        <dt className="muted">Total from Akash wallet</dt>
         <dd className="mono">{total} AKT</dd>
       </div>
       <div className="flex justify-between gap-3 border-t border-[var(--bd)] pt-2.5">
@@ -276,6 +279,7 @@ function Destination({
   formOff: boolean;
 }) {
   const [picker, setPicker] = useState(false);
+  const [walletsOpened, setWalletsOpened] = useState(false);
   const pasteRef = useRef<HTMLInputElement>(null);
   const { destination } = state;
   const check = destination.check;
@@ -332,7 +336,10 @@ function Destination({
               id="connect-solana"
               type="button"
               className="btn btn-out"
-              onClick={() => setPicker((open) => !open)}
+              onClick={() => {
+                setWalletsOpened(true);
+                setPicker((open) => !open);
+              }}
               disabled={
                 formOff || !state.canConnect || !!state.solanaConnecting
               }
@@ -341,35 +348,6 @@ function Destination({
               {state.solanaConnecting ? "Connecting…" : "Connect Wallet"}
             </button>
           </div>
-          {picker && !state.solanaConnecting && (
-            <div
-              className="card flex flex-col gap-0.5 p-1.5"
-              role="group"
-              aria-label="Choose a Solana wallet"
-            >
-              {SOLANA_WALLETS.map((name) => (
-                <button
-                  key={name}
-                  id={`connect-${name.toLowerCase()}`}
-                  type="button"
-                  className="btn btn-ghost opt"
-                  onClick={() => {
-                    setPicker(false);
-                    void bridge.connectSolana(name);
-                  }}
-                >
-                  <span className="flex items-center gap-2.5">
-                    <Wallet className="ico" aria-hidden="true" />
-                    {name}
-                  </span>
-                  <ChevronRight
-                    className="ico text-[var(--mfg)]"
-                    aria-hidden="true"
-                  />
-                </button>
-              ))}
-            </div>
-          )}
           <div className="flex items-center gap-3 pt-1" aria-hidden="true">
             <span className="h-px flex-1 bg-[var(--bd)]" />
             <span className="help">or</span>
@@ -441,6 +419,15 @@ function Destination({
             </p>
           )}
         </div>
+      )}
+      {walletsOpened && (
+        <WalletLoader>
+          <SolanaWallets
+            state={state}
+            open={!wallet && picker && !state.solanaConnecting}
+            onSelect={() => setPicker(false)}
+          />
+        </WalletLoader>
       )}
       <Notice state={state} scope="solana" />
     </div>
@@ -535,7 +522,7 @@ function TransferCard({
   onReview: () => void;
 }) {
   const [copied, copy] = useCopy();
-  const formOff = !state.sender || overlay || state.busy;
+  const formOff = overlay || state.busy;
   const general =
     state.notice &&
     (state.notice.scope === "general" ||
@@ -616,7 +603,7 @@ function TransferCard({
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="dot tone-success" aria-hidden="true" />
-                <span className="over">Keplr connected</span>
+                <span className="over">Akash wallet connected</span>
               </div>
               <button
                 type="button"
@@ -646,9 +633,9 @@ function TransferCard({
               <div className="flex min-w-0 items-center gap-3">
                 <IconTile />
                 <div className="flex min-w-0 flex-col">
-                  <span className="lbl">Connect Keplr to start</span>
+                  <span className="lbl">Connect Akash wallet to start</span>
                   <span className="help">
-                    You send AKT from your Keplr wallet on Akash.
+                    You send AKT from your Akash wallet on Akash.
                   </span>
                 </div>
               </div>
@@ -656,10 +643,10 @@ function TransferCard({
                 id="connect-keplr-form"
                 type="button"
                 className="btn btn-pri"
-                onClick={() => void bridge.connectAkash()}
+                onClick={() => bridge.chooseAkashWallet()}
                 disabled={!state.canConnect}
               >
-                {state.akashConnecting ? "Connecting…" : "Connect Keplr"}
+                {state.akashConnecting ? "Connecting…" : "Connect Akash wallet"}
               </button>
             </div>
             <Notice state={state} scope="akash" />
@@ -798,7 +785,7 @@ function Review({
         </label>
       </div>
       <dl className="flex flex-col gap-1.5">
-        <dt className="over">From · Keplr</dt>
+        <dt className="over">From · Akash wallet</dt>
         <dd className="addr text-[13px] leading-[18px] text-[var(--fg2)]">
           {state.sender}
         </dd>
@@ -817,7 +804,7 @@ function Review({
               className="muted text-[13px] leading-[18px]"
             >
               AKT on Solana can’t be transferred back to Akash. Once you approve
-              in Keplr, the transfer can’t be cancelled.
+              in Akash wallet, the transfer can’t be cancelled.
             </p>
           </div>
         </div>
@@ -851,13 +838,13 @@ function Review({
             onClick={onConfirm}
             disabled={!canConfirm}
           >
-            {signing ? "Approve in Keplr…" : "Confirm in Keplr"}
+            {signing ? "Approve in Akash wallet…" : "Confirm in Akash wallet"}
           </button>
         </div>
         {ackHint && !signing && <p className="help text-center">{ackHint}</p>}
         {signing && (
           <p className="help text-center" aria-hidden="true">
-            Approve the transaction in Keplr.
+            Approve the transaction in Akash wallet.
           </p>
         )}
         {error && (
@@ -870,7 +857,7 @@ function Review({
           </p>
         )}
         <p className="sr" role="status">
-          {signing ? "Approve the transaction in Keplr." : ""}
+          {signing ? "Approve the transaction in Akash wallet." : ""}
         </p>
       </div>
     </div>
@@ -905,7 +892,7 @@ function Receipt({
       ? "Sending your deposit to Akash. Its transaction hash is already saved in this browser."
       : warning
         ? result.message
-        : `Your AKT has left Keplr. We’ll validate the deposit, then send ${amount} to your Solana address.`;
+        : `Your AKT has left Akash wallet. We’ll validate the deposit, then send ${amount} to your Solana address.`;
   return (
     <div role="status" className="flex flex-col gap-5">
       <div className="flex flex-col gap-3">
@@ -1078,7 +1065,7 @@ function Transfers({
           </h2>
           <span className="help">
             {state.sender
-              ? "From this browser and your Keplr account"
+              ? "From this browser and your Akash wallet account"
               : "Saved in this browser"}
           </span>
         </div>
@@ -1236,7 +1223,7 @@ function Transfers({
                           <StatusBadge status={item.status} />
                           {item.status.refunded ? (
                             <span className="help">
-                              AKT returned to your Keplr wallet
+                              AKT returned to your Akash wallet
                             </span>
                           ) : item.status.tone === "error" ? (
                             <span className="help">Rejected on Akash</span>
@@ -1293,7 +1280,7 @@ function Transfers({
                       {item.status.refunded && (
                         <p className="help flex items-start gap-1.5 text-[var(--fg2)]">
                           <Undo2 className="ico mt-px" aria-hidden="true" />
-                          <span>Returned to your Keplr wallet</span>
+                          <span>Returned to your Akash wallet</span>
                         </p>
                       )}
                       <button
@@ -1407,7 +1394,7 @@ function Faq({ state }: { state: BridgeState }) {
     },
     {
       q: "I lost my ledger ID. How do I find my transfer?",
-      a: "Transfers you start in this browser are listed under Your transfers. On another device, connect the same Keplr account, or track it with the transaction hash from your Keplr activity.",
+      a: "Transfers you start in this browser are listed under Your transfers. On another device, connect the same Akash wallet account, or track it with the transaction hash from your Akash wallet activity.",
     },
   ];
   return (
@@ -1513,8 +1500,8 @@ function TransferPage({ state }: { state: BridgeState }) {
       <div className="mx-auto flex w-full max-w-[640px] flex-col items-start gap-2 text-center">
         <h1 className="display h1">Move AKT to Solana</h1>
         <p className="text-left text-base leading-6 text-[var(--mfg)]">
-          Send AKT from your Keplr wallet to any Solana address. You’ll review
-          every detail before you approve anything in Keplr.
+          Send AKT from your Akash wallet to any Solana address. You’ll review
+          every detail before you approve anything in your wallet.
         </p>
         <button
           type="button"
@@ -1692,6 +1679,10 @@ function Developer({ state }: { state: BridgeState }) {
 function App() {
   const state = useSyncExternalStore(bridge.subscribe, bridge.getSnapshot);
   const [hash, setHash] = useState(location.hash);
+  const [akashOpened, setAkashOpened] = useState(false);
+  useEffect(() => {
+    if (state.akashPicker) setAkashOpened(true);
+  }, [state.akashPicker]);
   const route = portalRoute(hash);
   const developer = route.kind === "developer";
   useEffect(() => bridge.start(), []);
@@ -1703,6 +1694,15 @@ function App() {
   return (
     <div className="ab flex min-h-screen flex-col">
       <Header state={state} />
+      {state.config && akashOpened && (
+        <WalletLoader>
+          <AkashWallets
+            key={state.config.network.networkKey}
+            state={state}
+            config={state.config}
+          />
+        </WalletLoader>
+      )}
       <main className="wrap sec gap-lg flex grow flex-col">
         <div
           id="transfer-view"

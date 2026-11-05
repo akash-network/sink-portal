@@ -1,3 +1,6 @@
+import { JSONUint8Array } from "@keplr-wallet/provider-extension/build/uint8-array";
+import { base58 } from "@scure/base";
+import { toBech32 } from "@cosmjs/encoding";
 import type { Page } from "@playwright/test";
 import type { OfflineDirectSigner } from "@cosmjs/proto-signing";
 
@@ -14,13 +17,6 @@ export interface WalletSession {
   changeKeplrAccount(): Promise<void>;
 }
 
-interface SerializedSignDoc {
-  bodyBytes: number[];
-  authInfoBytes: number[];
-  chainId: string;
-  accountNumber: string;
-}
-
 interface SuggestedChain {
   chainId: string;
   rpc: string;
@@ -28,22 +24,12 @@ interface SuggestedChain {
 }
 
 interface WalletBindings {
-  __e2eAkashAccounts(): Promise<
-    { address: string; algo: string; pubkey: number[] }[]
-  >;
-  __e2eAkashSignDirect(
-    address: string,
-    doc: SerializedSignDoc,
-  ): Promise<{
-    signed: SerializedSignDoc;
-    signature: { pub_key: { type: string; value: string }; signature: string };
-  }>;
-  __e2eSuggestChain(chain: SuggestedChain): Promise<void>;
+  __e2eKeplrRequest(method: string, args: unknown): Promise<unknown>;
   __e2eSolanaSignRequest(): Promise<void>;
 }
 
 interface SolanaControl {
-  switchAccount(address: string): void;
+  switchAccount(address: string, bytes: number[]): void;
   disconnect(): void;
 }
 
@@ -62,6 +48,7 @@ export async function injectWallets(
   },
 ): Promise<WalletSession> {
   const [account] = await options.akash.getAccounts();
+  let accountChanged = false;
   const session: WalletSession = {
     akashAddress: account.address,
     solanaAddress: options.solanaAddress,
@@ -69,182 +56,238 @@ export async function injectWallets(
     solanaSignRequests: 0,
     suggestedChains: [],
     switchSolanaAccount: (address) =>
-      page.evaluate((next) => {
-        (
-          window as unknown as { __e2eSolana: SolanaControl }
-        ).__e2eSolana.switchAccount(next);
-      }, address),
+      page.evaluate(
+        (next) => {
+          (
+            window as unknown as { __e2eSolana: SolanaControl }
+          ).__e2eSolana.switchAccount(next.address, next.bytes);
+        },
+        { address, bytes: [...base58.decode(address)] },
+      ),
     disconnectSolana: () =>
       page.evaluate(() => {
         (
           window as unknown as { __e2eSolana: SolanaControl }
         ).__e2eSolana.disconnect();
       }),
-    changeKeplrAccount: () =>
-      page.evaluate(() => {
+    changeKeplrAccount: () => {
+      accountChanged = true;
+      return page.evaluate(() => {
         window.dispatchEvent(new Event("keplr_keystorechange"));
-      }),
+      });
+    },
   };
 
-  await page.exposeFunction("__e2eAkashAccounts", () => [
-    {
-      address: account.address,
-      algo: account.algo,
-      pubkey: [...account.pubkey],
-    },
-  ]);
-  await page.exposeFunction(
-    "__e2eAkashSignDirect",
-    async (address: string, doc: SerializedSignDoc) => {
-      session.cosmosSignRequests += 1;
-      // Keplr's own message when the user rejects the approval popup.
-      if (!options.allowSigning) throw new Error("Request rejected");
-      if (doc.chainId !== options.chainId)
-        throw new Error(`Refusing to sign for chain ${doc.chainId}`);
-      const { signed, signature } = await options.akash.signDirect(address, {
-        bodyBytes: Uint8Array.from(doc.bodyBytes),
-        authInfoBytes: Uint8Array.from(doc.authInfoBytes),
-        chainId: doc.chainId,
-        accountNumber: BigInt(doc.accountNumber),
-      });
-      return {
-        signed: {
-          bodyBytes: [...signed.bodyBytes],
-          authInfoBytes: [...signed.authInfoBytes],
-          chainId: signed.chainId,
-          accountNumber: signed.accountNumber.toString(),
-        },
-        signature,
-      };
-    },
-  );
-  await page.exposeFunction("__e2eSuggestChain", (chain: SuggestedChain) => {
-    session.suggestedChains.push(chain);
-  });
   await page.exposeFunction("__e2eSolanaSignRequest", () => {
     session.solanaSignRequests += 1;
   });
+  let enabled = false;
+  let suggested = false;
+  await page.exposeFunction(
+    "__e2eKeplrRequest",
+    async (method: string, encoded: unknown) => {
+      try {
+        if (method === "ethereum" || method === "bitcoin")
+          return JSONUint8Array.wrap({ return: [] });
+        const args: unknown = JSONUint8Array.unwrap(encoded);
+        if (!Array.isArray(args)) throw new Error("Invalid wallet request");
+        let value: unknown;
+        if (method === "ping" || method === "disable") value = undefined;
+        else if (method === "experimentalSuggestChain") {
+          const chain = args[0] as SuggestedChain;
+          if (chain.chainId !== options.chainId)
+            throw new Error("Unexpected chain");
+          session.suggestedChains.push({
+            chainId: chain.chainId,
+            rpc: chain.rpc,
+            rest: chain.rest,
+          });
+          suggested = true;
+        } else if (method === "getKey" || method === "enable") {
+          if (args[0] !== options.chainId) throw new Error("Unexpected chain");
+          if (!suggested) throw new Error("Unknown chain");
+          if (options.keplr === "reject") throw new Error("Request rejected");
+          enabled = true;
+          value = {
+            name: "E2E",
+            algo: account.algo,
+            pubKey: account.pubkey,
+            bech32Address: accountChanged
+              ? toBech32("akash", new Uint8Array(20).fill(9))
+              : account.address,
+            isNanoLedger: false,
+          };
+        } else if (method === "signDirect") {
+          session.cosmosSignRequests += 1;
+          if (!enabled || !options.allowSigning)
+            throw new Error("Request rejected");
+          const [chainId, address, doc] = args as [
+            string,
+            string,
+            {
+              bodyBytes: Uint8Array;
+              authInfoBytes: Uint8Array;
+              chainId: string;
+              accountNumber: string;
+            },
+          ];
+          if (chainId !== options.chainId || doc.chainId !== chainId)
+            throw new Error("Unexpected signing chain");
+          const result = await options.akash.signDirect(address, {
+            ...doc,
+            accountNumber: BigInt(doc.accountNumber),
+          });
+          value = {
+            ...result,
+            signed: {
+              ...result.signed,
+              accountNumber: result.signed.accountNumber.toString(),
+            },
+          };
+        } else throw new Error(`Unexpected wallet method: ${method}`);
+        return JSONUint8Array.wrap({ return: value });
+      } catch (error) {
+        return {
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    },
+  );
   await page.addInitScript(installProviders, {
-    chainId: options.chainId,
-    keplr: options.keplr,
     solanaWallets: options.solanaWallets,
     solanaAddress: options.solanaAddress,
+    solanaBytes: [...base58.decode(options.solanaAddress)],
   });
   return session;
 }
 
 // Runs inside the page, so it must not reference anything from this module.
 function installProviders({
-  chainId,
-  keplr,
   solanaWallets,
   solanaAddress,
+  solanaBytes,
 }: {
-  chainId: string;
-  keplr: "approve" | "reject";
+  solanaBytes: number[];
   solanaWallets: SolanaWalletName[];
   solanaAddress: string;
 }) {
   const page = window as unknown as WalletBindings & Record<string, unknown>;
-  const checkChain = (value: string) => {
-    if (value !== chainId) throw new Error(`Unexpected chain ${value}`);
+  page.keplrRequestMetaIdSupport = true;
+  window.addEventListener("message", async (event: MessageEvent) => {
+    if (event.source !== window || event.origin !== location.origin) return;
+    const request: unknown = event.data;
+    if (
+      !request ||
+      typeof request !== "object" ||
+      !("type" in request) ||
+      typeof request.type !== "string" ||
+      !/^proxy-request(?:-|$)/.test(request.type) ||
+      request.type === "proxy-request-response" ||
+      !("id" in request) ||
+      !("method" in request) ||
+      typeof request.method !== "string" ||
+      !("args" in request)
+    )
+      return;
+    const result = await page.__e2eKeplrRequest(request.method, request.args);
+    window.postMessage(
+      { type: "proxy-request-response", id: request.id, result },
+      location.origin,
+    );
+  });
+  type Account = {
+    address: string;
+    publicKey: Uint8Array;
+    chains: readonly string[];
+    features: readonly string[];
   };
-  const signer = {
-    getAccounts: async () =>
-      (await page.__e2eAkashAccounts()).map((account) => ({
-        ...account,
-        pubkey: Uint8Array.from(account.pubkey),
-      })),
-    signDirect: async (
-      address: string,
-      doc: {
-        bodyBytes: Uint8Array;
-        authInfoBytes: Uint8Array;
-        chainId: string;
-        accountNumber: bigint;
-      },
-    ) => {
-      const { signed, signature } = await page.__e2eAkashSignDirect(address, {
-        bodyBytes: [...doc.bodyBytes],
-        authInfoBytes: [...doc.authInfoBytes],
-        chainId: doc.chainId,
-        accountNumber: doc.accountNumber.toString(),
-      });
-      return {
-        signed: {
-          bodyBytes: Uint8Array.from(signed.bodyBytes),
-          authInfoBytes: Uint8Array.from(signed.authInfoBytes),
-          chainId: signed.chainId,
-          accountNumber: BigInt(signed.accountNumber),
-        },
-        signature,
-      };
-    },
-  };
-  page.keplr = {
-    experimentalSuggestChain: async (chain: SuggestedChain) => {
-      checkChain(chain.chainId);
-      await page.__e2eSuggestChain({
-        chainId: chain.chainId,
-        rpc: chain.rpc,
-        rest: chain.rest,
-      });
-    },
-    enable: async (value: string) => {
-      checkChain(value);
-      if (keplr === "reject") throw new Error("Request rejected");
-    },
-    getOfflineSignerAuto: async (value: string) => {
-      checkChain(value);
-      return signer;
-    },
-  };
-
-  type Listener = () => void;
+  type Listener = (value: { accounts: Account[] }) => void;
   const providers = solanaWallets.map((name) => {
-    const listeners: Record<string, Listener[]> = {};
+    const listeners = new Set<Listener>();
+    const account = (address: string, bytes: number[]): Account => {
+      return {
+        address,
+        publicKey: Uint8Array.from(bytes),
+        chains: ["solana:mainnet"],
+        features: ["solana:signTransaction", "solana:signMessage"],
+      };
+    };
     const refuseToSign = async () => {
       await page.__e2eSolanaSignRequest();
       throw new Error("The destination wallet must never be asked to sign");
     };
-    const provider = {
-      isPhantom: name === "Phantom",
-      isSolflare: name === "Solflare",
-      isBackpack: name === "Backpack",
-      publicKey: null as { toString(): string } | null,
-      connect: async () => {
-        const publicKey = { toString: () => solanaAddress };
-        provider.publicKey = publicKey;
-        return { publicKey };
-      },
-      disconnect: async () => {
-        provider.publicKey = null;
-      },
-      on: (event: string, listener: Listener) => {
-        (listeners[event] ??= []).push(listener);
-      },
-      emit: (event: string) => listeners[event]?.forEach((run) => run()),
-      signMessage: refuseToSign,
-      signTransaction: refuseToSign,
-      signAllTransactions: refuseToSign,
+    let accounts: Account[] = [];
+    const update = (next: Account[]) => {
+      accounts = next;
+      for (const run of listeners) run({ accounts });
     };
-    if (name === "Phantom") page.phantom = { solana: provider };
-    if (name === "Solflare") page.solflare = provider;
-    if (name === "Backpack") page.backpack = provider;
-    return provider;
+    const wallet = {
+      version: "1.0.0",
+      name,
+      icon: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciLz4=",
+      chains: ["solana:mainnet"],
+      get accounts() {
+        return accounts;
+      },
+      features: {
+        "standard:connect": {
+          version: "1.0.0",
+          connect: async () => {
+            update([account(solanaAddress, solanaBytes)]);
+            return { accounts };
+          },
+        },
+        "standard:disconnect": {
+          version: "1.0.0",
+          disconnect: async () => update([]),
+        },
+        "standard:events": {
+          version: "1.0.0",
+          on: (_event: string, listener: Listener) => {
+            listeners.add(listener);
+            return () => {
+              listeners.delete(listener);
+            };
+          },
+        },
+        "solana:signTransaction": {
+          version: "1.0.0",
+          supportedTransactionVersions: ["legacy", 0],
+          signTransaction: refuseToSign,
+        },
+        "solana:signMessage": { version: "1.0.0", signMessage: refuseToSign },
+      },
+    };
+    const register = (api: {
+      register: (...items: (typeof wallet)[]) => void;
+    }) => api.register(wallet);
+    window.dispatchEvent(
+      new CustomEvent("wallet-standard:register-wallet", { detail: register }),
+    );
+    window.addEventListener("wallet-standard:app-ready", (event) =>
+      register(
+        (
+          event as CustomEvent<{
+            register: (...items: (typeof wallet)[]) => void;
+          }>
+        ).detail,
+      ),
+    );
+    return {
+      connected: () => accounts.length > 0,
+      switchAccount: (address: string, bytes: number[]) =>
+        update([account(address, bytes)]),
+      disconnect: () => update([]),
+    };
   });
-  const connected = () => providers.filter((provider) => provider.publicKey);
-  const control: SolanaControl = {
-    switchAccount: (address) =>
-      connected().forEach((provider) => {
-        provider.publicKey = { toString: () => address };
-        provider.emit("accountChanged");
-      }),
+  page.__e2eSolana = {
+    switchAccount: (address: string, bytes: number[]) =>
+      providers
+        .filter((item) => item.connected())
+        .forEach((item) => item.switchAccount(address, bytes)),
     disconnect: () =>
-      connected().forEach((provider) => {
-        provider.publicKey = null;
-        provider.emit("disconnect");
-      }),
+      providers
+        .filter((item) => item.connected())
+        .forEach((item) => item.disconnect()),
   };
-  page.__e2eSolana = control;
 }

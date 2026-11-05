@@ -51,7 +51,7 @@ test.describe("Network conditions", () => {
 
       await expect(transferPage.clientNotice).toBeHidden();
       await expect(transferPage.transferCard).toContainText(
-        "Connect Keplr to continue.",
+        "Connect your Akash wallet to continue.",
       );
     });
   });

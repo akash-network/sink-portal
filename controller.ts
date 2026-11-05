@@ -1,3 +1,9 @@
+import { draftFromState, saveDraft, takeDraft } from "./wallet-draft";
+import type {
+  ConnectorClient,
+  WalletConnectorId,
+} from "@solana/connector/headless";
+import type { AkashWalletSession } from "./wallet-session";
 import type { OfflineSigner } from "@cosmjs/proto-signing";
 import type {
   BridgeConfig,
@@ -9,10 +15,6 @@ import {
   LEGACY_STORAGE_KEY,
   STORAGE_KEY,
   checkDiscovered,
-  connectKeplr,
-  connectSolanaWallet,
-  getSigner,
-  keplrProvider,
   loadSubmissions,
   mergeDiscovered,
   readBalance,
@@ -21,8 +23,6 @@ import {
   signerAddress,
   signingClient,
   submitIntent,
-  type SolanaProvider,
-  type SolanaWalletName,
 } from "./bridge";
 import {
   amountStyle,
@@ -78,14 +78,21 @@ let balance: bigint | null = null;
 let generation = 0;
 let phase: "idle" | "preparing" | "signing" | "submitting" = "idle";
 let akashConnecting = false;
-let solanaConnecting: SolanaWalletName | null = null;
-let solana: { name: SolanaWalletName; provider: SolanaProvider } | null = null;
-const listening = new WeakSet<SolanaProvider>();
+let akashAttempt = 0;
+let akashWallet: AkashWalletSession | null = null;
+let akashPicker = false;
+let solanaConnecting: string | null = null;
+let solana: {
+  name: string;
+  client: ConnectorClient;
+  id: WalletConnectorId;
+} | null = null;
+let unwatchSolana: (() => void) | undefined;
 export type DestinationSource = "wallet" | "paste" | "retry";
 let destination: {
   text: string;
   source: DestinationSource | null;
-  wallet: SolanaWalletName | null;
+  wallet: string | null;
 } = { text: "", source: null, wallet: null };
 let retryOf = "";
 let submissions: SavedSubmission[] = [];
@@ -275,6 +282,7 @@ async function updateBalance() {
   }
 }
 function adoptConfig(next: BridgeConfig) {
+  const firstConfiguration = config === null;
   syncServerClock(next.checkedAt);
   if (
     config &&
@@ -288,17 +296,32 @@ function adoptConfig(next: BridgeConfig) {
   ) {
     invalidate();
     if (config.network.networkKey !== next.network.networkKey) {
+      akashWallet = null;
       signer = null;
       sender = null;
       balance = null;
       say(
         "general",
-        "The testnet identity changed. Reconnect Keplr before another transfer.",
+        "The testnet identity changed. Reconnect your Akash wallet before another transfer.",
         "error",
       );
     }
   }
   config = next;
+  if (firstConfiguration) {
+    const draft = takeDraft(next.network.networkKey);
+    if (draft) {
+      destination = { text: draft.recipient, source: "paste", wallet: null };
+      amountText = draft.amountUakt
+        ? formatAmount(draft.amountUakt, style.decimal)
+        : "";
+      notice = {
+        scope: "general",
+        text: "Unsigned draft restored. Reconnect your wallet and review the amount and destination.",
+        tone: "info",
+      };
+    }
+  }
   emit();
 }
 async function refreshNetwork() {
@@ -335,34 +358,46 @@ async function refreshNetwork() {
 function connecting() {
   return akashConnecting || solanaConnecting !== null;
 }
-async function connectAkash() {
+async function connectAkash(wallet: AkashWalletSession) {
   if (!config || phase !== "idle" || connecting()) return;
   akashConnecting = true;
+  const attempt = ++akashAttempt;
   invalidate();
   const epoch = generation;
-  say("akash", "Approve the private testnet and connection in Keplr.", "info");
+  say("akash", `Approve the connection in ${wallet.name}.`, "info");
   try {
-    const connected = await connectKeplr(config);
-    if (generation !== epoch)
+    await wallet.connect();
+    const connectedSigner = await wallet.getSigner();
+    const connectedAddress = await signerAddress(connectedSigner);
+    if (generation !== epoch || attempt !== akashAttempt)
       throw new Error("Wallet changed during connection. Connect again.");
-    signer = connected.signer;
-    sender = connected.address;
+    signer = connectedSigner;
+    sender = connectedAddress;
+    akashWallet = wallet;
+    akashPicker = false;
     balance = null;
     lastDiscovery = 0;
     clearNotice();
     void discoverTransfers();
     void pollTransfers();
   } catch (error) {
-    say("akash", message(error), "error");
+    if (attempt === akashAttempt) say("akash", message(error), "error");
   } finally {
-    akashConnecting = false;
-    emit();
-    void updateBalance();
+    if (attempt === akashAttempt) {
+      akashConnecting = false;
+      emit();
+      void updateBalance();
+    }
   }
 }
 function disconnectAkash() {
   if (phase !== "idle") return;
   invalidate();
+  const previous = akashWallet;
+  akashWallet = null;
+  void previous
+    ?.disconnect()
+    .catch((error: unknown) => say("akash", message(error), "error"));
   signer = null;
   sender = null;
   balance = null;
@@ -371,52 +406,58 @@ function disconnectAkash() {
   clearNotice();
   emit();
 }
-function watchSolana(name: SolanaWalletName, provider: SolanaProvider) {
-  if (listening.has(provider) || typeof provider.on !== "function") return;
-  listening.add(provider);
-  provider.on("accountChanged", () => {
-    if (solana?.provider !== provider) return;
-    invalidate();
-    let next: string | null = null;
-    try {
-      next = provider.publicKey
-        ? publicKey(provider.publicKey.toString(), true)
-        : null;
-    } catch {
-      next = null;
-    }
-    if (next) {
-      destination = { text: next, source: "wallet", wallet: name };
-      say(
-        "solana",
-        `${name} account changed. Check the destination before you confirm.`,
-        "info",
-      );
-    } else {
-      solana = null;
-      destination = { text: "", source: null, wallet: null };
-      say("solana", `${name} disconnected.`, "info");
-    }
-  });
-  provider.on("disconnect", () => {
-    if (solana?.provider !== provider) return;
-    invalidate();
-    solana = null;
-    destination = { text: "", source: null, wallet: null };
-    say("solana", `${name} disconnected.`, "info");
-  });
+function solanaAddress(client: ConnectorClient): string | null {
+  const wallet = client.getSnapshot().wallet;
+  return wallet.status === "connected"
+    ? wallet.session.selectedAccount.address
+    : null;
 }
-async function connectSolana(name: SolanaWalletName) {
+async function connectSolana(client: ConnectorClient, id: WalletConnectorId) {
   if (phase !== "idle" || connecting()) return;
+  const name = client
+    .getSnapshot()
+    .connectors.find((item) => item.id === id)?.name;
+  if (!name) return;
+  unwatchSolana?.();
+  solana = null;
   solanaConnecting = name;
   invalidate();
-  say("solana", `Approve the connection in ${name}.`, "info");
+  const epoch = generation;
+  say(
+    "solana",
+    `Approve the connection in ${name}. No signing is requested.`,
+    "info",
+  );
   try {
-    const connected = await connectSolanaWallet(name);
-    solana = { name, provider: connected.provider };
-    watchSolana(name, connected.provider);
-    invalidate();
-    destination = { text: connected.address, source: "wallet", wallet: name };
+    await client.connectWallet(id);
+    const address = publicKey(solanaAddress(client), true);
+    if (epoch !== generation)
+      throw new Error("Wallet changed during connection. Connect again.");
+    unwatchSolana?.();
+    solana = { name, client, id };
+    destination = { text: address, source: "wallet", wallet: name };
+    unwatchSolana = client.subscribe(() => {
+      if (solana?.client !== client || destination.source !== "wallet") return;
+      let next: string | null = null;
+      try {
+        next = publicKey(solanaAddress(client), true);
+      } catch {
+        /* Disconnected or unusable account. */
+      }
+      if (next === destination.text) return;
+      invalidate();
+      destination = next
+        ? { text: next, source: "wallet", wallet: name }
+        : { text: "", source: null, wallet: null };
+      if (!next) solana = null;
+      say(
+        "solana",
+        next
+          ? `${name} account changed. Check the destination before you confirm.`
+          : `${name} disconnected.`,
+        "info",
+      );
+    });
     retryOf = "";
     clearNotice();
   } catch (error) {
@@ -429,12 +470,41 @@ async function connectSolana(name: SolanaWalletName) {
 function disconnectSolana() {
   if (phase !== "idle") return;
   invalidate();
-  const provider = solana?.provider;
+  const client = solana?.client;
+  unwatchSolana?.();
+  unwatchSolana = undefined;
   solana = null;
   destination = { text: "", source: null, wallet: null };
   clearNotice("solana");
   emit();
-  void provider?.disconnect?.().catch(() => {});
+  void client
+    ?.disconnectWallet()
+    .catch((error: unknown) => say("solana", message(error), "error"));
+}
+function chooseAkashWallet() {
+  if (phase !== "idle" || connecting()) return;
+  akashPicker = true;
+  emit();
+}
+function closeAkashPicker() {
+  invalidate();
+  akashAttempt += 1;
+  akashConnecting = false;
+  akashPicker = false;
+  emit();
+}
+function akashAccountChanged(id: string, address: string | undefined) {
+  if (akashWallet?.id !== id || sender === address) return;
+  invalidate();
+  akashWallet = null;
+  signer = null;
+  sender = null;
+  balance = null;
+  say(
+    "akash",
+    "Wallet account changed. Reconnect and review the transfer.",
+    "info",
+  );
 }
 function setDestination(value: string) {
   if (phase !== "idle") return;
@@ -442,17 +512,6 @@ function setDestination(value: string) {
   destination = { text: value, source: "paste", wallet: null };
   clearNotice("solana");
   emit();
-}
-function onKeplrChange() {
-  invalidate();
-  signer = null;
-  sender = null;
-  balance = null;
-  say(
-    "general",
-    "Keplr account changed. Reconnect to confirm the sender. Saved transfers continue to be tracked.",
-    "info",
-  );
 }
 function setAmount(value: string) {
   amountText = value;
@@ -506,7 +565,7 @@ async function transfer() {
   try {
     if (
       destination.source === "wallet" &&
-      walletSource?.provider.publicKey?.toString() !== checked.address
+      (!walletSource || solanaAddress(walletSource.client) !== checked.address)
     )
       throw new Error(
         "Your Solana wallet changed. Check the destination and try again.",
@@ -523,11 +582,13 @@ async function transfer() {
     if (value > transferBounds(next.limits).max)
       throw new Error("Amount exceeds the per-transfer limit");
     const currentSender = sender;
-    if (!currentSender) throw new Error("Reconnect Keplr");
+    const currentWallet = akashWallet;
+    if (!currentWallet) throw new Error("Reconnect your Akash wallet");
+    if (!currentSender) throw new Error("Reconnect your Akash wallet");
     const liveBalance = await readBalance(next, currentSender);
     if (value + BigInt(next.fee.amountUakt) > liveBalance)
       throw new Error("Insufficient AKT for this transfer and its fee");
-    const liveSigner = await getSigner(keplrProvider(), next.network.chainId);
+    const liveSigner = await currentWallet.getSigner();
     if (
       generation !== requestGeneration ||
       (await signerAddress(liveSigner)) !== currentSender
@@ -558,16 +619,13 @@ async function transfer() {
         submissions = loadSubmissions(localStorage);
       },
       broadcast: async (bytes) => {
-        const latestSigner = await getSigner(
-          keplrProvider(),
-          next.network.chainId,
-        );
+        const latestSigner = await currentWallet.getSigner();
         const latestAddress = await signerAddress(latestSigner);
         if (
           generation !== intent.generation ||
           latestAddress !== intent.sender ||
           (walletSource &&
-            walletSource.provider.publicKey?.toString() !== intent.recipient) ||
+            solanaAddress(walletSource.client) !== intent.recipient) ||
           Date.now() > intent.expiresAt
         )
           throw new Error(
@@ -695,7 +753,6 @@ function start() {
   }
   emit();
   void refreshNetwork().then(() => void pollTransfers());
-  window.addEventListener("keplr_keystorechange", onKeplrChange);
   window.addEventListener("storage", onStorage);
   const networkTimer = setInterval(() => {
     void refreshNetwork();
@@ -704,9 +761,12 @@ function start() {
     void pollTransfers();
   }, 5_000);
   return () => {
+    invalidate();
+    akashAttempt += 1;
+    unwatchSolana?.();
+    unwatchSolana = undefined;
     clearInterval(networkTimer);
     clearInterval(receiptTimer);
-    window.removeEventListener("keplr_keystorechange", onKeplrChange);
     window.removeEventListener("storage", onStorage);
   };
 }
@@ -731,7 +791,7 @@ function blocker(
   if (clientPause(config.client)) return "New transfers are paused.";
   if (historyError)
     return "Saved transfers can’t be read. Record your transaction hashes before clearing them.";
-  if (!sender) return "Connect Keplr to continue.";
+  if (!sender) return "Connect your Akash wallet to continue.";
   if (checked.state === "empty")
     return "Connect your Solana wallet or paste an address.";
   if (checked.state !== "valid") return "Fix the Solana address to continue.";
@@ -740,7 +800,7 @@ function blocker(
   if (value === null) return "Enter an amount greater than 0.";
   if (minimum !== null)
     return `Raise the amount to at least ${displayAmount(minimum)} AKT.`;
-  if (balance === null) return "Loading your Keplr balance…";
+  if (balance === null) return "Loading your your Akash wallet balance…";
   if (over) return "Lower the amount so your balance covers the network fee.";
   if (limit) return "Lower the amount to the per-transfer limit.";
   return "";
@@ -782,6 +842,8 @@ function readSnapshot() {
     balance,
     fee: networkFee,
     akashConnecting,
+    akashPicker,
+    akashWallet: akashWallet?.name ?? null,
     solanaConnecting,
     solanaWallet: solana?.name ?? null,
     destination: { ...destination, check: checkDestination(destination.text) },
@@ -817,6 +879,8 @@ function readSnapshot() {
 let snapshot = readSnapshot();
 function emit() {
   snapshot = readSnapshot();
+  if (config)
+    saveDraft(phase === "submitting" ? null : draftFromState(snapshot));
   listeners.forEach((listener) => listener());
 }
 export const bridge = {
@@ -829,6 +893,9 @@ export const bridge = {
   getSnapshot: () => snapshot,
   start,
   connectAkash,
+  chooseAkashWallet,
+  closeAkashPicker,
+  akashAccountChanged,
   disconnectAkash,
   connectSolana,
   disconnectSolana,

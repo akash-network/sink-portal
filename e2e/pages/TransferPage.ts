@@ -35,11 +35,13 @@ export class TransferPage {
   }
 
   get connectKeplrButton() {
-    return this.transferCard.getByRole("button", { name: "Connect Keplr" });
+    return this.transferCard.getByRole("button", {
+      name: "Connect Akash wallet",
+    });
   }
 
   get disconnectKeplrButton() {
-    return this.header.getByRole("button", { name: "Disconnect Keplr" });
+    return this.header.getByRole("button", { name: "Disconnect Akash wallet" });
   }
 
   get copyAkashAddressButton() {
@@ -107,6 +109,10 @@ export class TransferPage {
 
   async connectKeplr() {
     await this.connectKeplrButton.click();
+    await this.page
+      .getByRole("dialog", { name: "Connect an Akash wallet" })
+      .getByRole("button", { name: "Keplr", exact: true })
+      .click();
   }
 
   async connectSolanaWallet(name: SolanaWalletName) {
