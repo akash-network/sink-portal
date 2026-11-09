@@ -529,7 +529,7 @@ export function matchReceipt(
       (saved.transferId !== undefined && d.id !== saved.transferId)
     )
       throw new Error(
-        "Receipt does not match the signed transfer. Contact the testnet operator.",
+        "Receipt does not match the signed transfer. Contact Akash support.",
       );
   }
 }
@@ -579,7 +579,7 @@ export function receiptView(
     return {
       title: "Conflicting chain outcomes",
       message:
-        "Akash settlement and finalized Solana status disagree. Contact the testnet operator; do not repeat this transfer." +
+        "Akash settlement and finalized Solana status disagree. Contact Akash support; do not repeat this transfer." +
         hold,
       tone: "warning",
       steps: ["complete", "warning", "warning"],

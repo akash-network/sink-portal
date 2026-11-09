@@ -302,7 +302,7 @@ function adoptConfig(next: BridgeConfig) {
       balance = null;
       say(
         "general",
-        "The testnet identity changed. Reconnect your Akash wallet before another transfer.",
+        "The network identity changed. Reconnect your Akash wallet before another transfer.",
         "error",
       );
     }

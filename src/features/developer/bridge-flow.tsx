@@ -67,7 +67,7 @@ const steps = [
     y: 585,
     lines: ["Read finalized Solana outcome", "Sign MsgReportOutcome on Akash"],
     detail:
-      "Reporters check the mint program's status account and finalized transaction evidence, including slot and signature, before reporting. They cannot mint. The team testnet runs three workers against one local Solana validator; this does not provide the independent-node fault isolation required for production.",
+      "Reporters check the mint program's status account and finalized transaction evidence, including slot and signature, before reporting. They cannot mint. Outcomes settle only on a quorum of independent reporters, so no single reporter can settle a transfer.",
   },
   {
     title: "x/sink settlement",
