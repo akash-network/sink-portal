@@ -60,6 +60,17 @@ export function createPortalServer(config: PortalConfig) {
     );
     try {
       const url = new URL(request.url ?? "/", config.origin);
+      // Liveness for load balancers: the process is up with a valid config. It never calls a
+      // chain, so an upstream outage cannot take every origin out of rotation at once
+      // (/api/status reports chain reachability).
+      if (
+        url.pathname === "/healthz" &&
+        (request.method === "GET" || request.method === "HEAD")
+      ) {
+        response.setHeader("Content-Type", "application/json");
+        response.end(request.method === "HEAD" ? undefined : '{"ok":true}');
+        return;
+      }
       if (
         url.pathname === "/rpc/akash" ||
         url.pathname === "/rpc/akash/status" ||

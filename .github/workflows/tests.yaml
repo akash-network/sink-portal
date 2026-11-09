@@ -1,0 +1,51 @@
+name: tests
+
+# The x/sink chain-sdk types are packed from a chain-sdk checkout (not yet in a published release).
+# Change CHAIN_SDK_REF once the sink API is on chain-sdk main.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  CHAIN_SDK_REF: feat/sink
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: akash-network/chain-sdk
+          ref: ${{ env.CHAIN_SDK_REF }}
+          path: .chain-sdk
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Pack chain-sdk
+        run: CHAIN_SDK_DIR="$GITHUB_WORKSPACE/.chain-sdk" npm run sdk
+
+      - name: Install
+        run: |
+          node scripts/unpin-sdk.mjs
+          npm ci
+
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run format:check
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Image builds
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
