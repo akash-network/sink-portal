@@ -1,14 +1,14 @@
 name: tests
 
-# The x/sink chain-sdk types are packed from a chain-sdk checkout (not yet in a published release).
-# Change CHAIN_SDK_REF once the sink API is on chain-sdk main.
+# The x/sink chain-sdk types are packed from a chain-sdk checkout (not yet in a published npm release).
+# CHAIN_SDK_REF pins the chain-sdk tag akash-network/node uses (go.mod: pkg.akt.dev/go v0.5.0-rc2).
 on:
   pull_request:
   push:
     branches: [main]
 
 env:
-  CHAIN_SDK_REF: feat/sink
+  CHAIN_SDK_REF: refs/tags/go/v0.5.0-rc2
 
 permissions:
   contents: read

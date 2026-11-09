@@ -126,8 +126,8 @@ GoReleaser then publishes:
 - `ghcr.io/akash-network/sink-portal`, a multi-arch image (`linux/amd64`, `linux/arm64`) tagged
   `<version>`, `<short commit>` and `latest` (stable releases only)
 
-`CHAIN_SDK_REF` in the workflows selects the chain-sdk branch with the x/sink API. Change it
-once that API is on chain-sdk `main`. To check a release locally:
+`CHAIN_SDK_REF` in the workflows pins chain-sdk to the tag akash-network/node uses
+(`go/v0.5.0-rc2`, from `pkg.akt.dev/go` in node's `go.mod`). Bump it with node. To check a release locally:
 `goreleaser release --snapshot --clean`.
 
 ## Source layout
