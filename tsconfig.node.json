@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable", "dom.asynciterable"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "e2e/**/*.ts",
+    "src/**/*.test.ts",
+    "server/**/*.ts",
+    "shared/**/*.ts",
+    "scripts/**/*.mts",
+    "playwright*.config.ts",
+    "vite.config.mts",
+    "vitest.config.mts"
+  ]
+}

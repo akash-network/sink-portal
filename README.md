@@ -6,24 +6,114 @@ Solana. The chain side lives in
 [akash-network/node](https://github.com/akash-network/node): the `x/sink`
 module and `contracts/solana`.
 
-The app is static. It reads `/api/config`, `/api/status`, `/api/receipt` and
-`/api/transfers` from its server and reaches Akash through `/rpc` and `/rest`
-on the same origin. [`contracts.ts`](contracts.ts) defines those responses; [`model.ts`](model.ts) validates them. The current
-API version is 2 and requires the composite-ID sink schema.
+This repository owns the React frontend, HTTP API, static-file server, and
+wallet RPC/REST proxy. The blockchain module, Solana program, relayer, and
+reporter services live in `akash-network/node`; the portal connects to their
+network endpoints and does not import their source or testnet workspace files.
 
-## Build
+[`shared/contracts.ts`](shared/contracts.ts) is the API contract used by both
+server and frontend. API version 2 requires the composite-ID sink schema.
+
+## Setup
 
 Requires Node 24. The x/sink message types are not in a published chain-sdk
-release yet, so pack them from a [chain-sdk](https://github.com/akash-network/chain-sdk)
-checkout with the sink API, next to this one by default:
+release yet, so pack the SDK dependency from a checkout with the sink API:
 
 ```bash
 CHAIN_SDK_DIR=../chain-sdk npm run sdk
 npm ci
-npm run build    # writes dist/
+cp server/config.example.json portal.config.json
+cp .env.example .env.local
 ```
 
-Serve `dist/` behind a server that provides the API above.
+Replace the placeholders in `portal.config.json` with the verified Akash chain
+ID and genesis timestamp, Solana genesis hash, RPC endpoints, deployed program,
+and canonical mint. The example's program and mint match the bundled ABI.
+Configuration validation rejects incomplete examples. Keep `portal.config.json`
+and `.env.local` local; both are ignored by Git.
+
+The server checks the configured network identities, committed Akash heights,
+Solana account ownership, mint authority, light-client state, and finality before
+returning signing configuration or a completed receipt. A missing or inconsistent
+chain response produces an error, never a fabricated balance or successful mint.
+
+## Development
+
+```bash
+npm run dev        # API on 127.0.0.1:8080 and Vite on 127.0.0.1:5173
+```
+
+The API restarts when its source changes; React components and styles use hot
+reload. Vite forwards `/api`, `/rpc`, and `/rest` to the local server, so browser
+requests remain same-origin. `PORTAL_CONFIG` selects the server configuration
+file. `PORTAL_API_URL` selects the Vite proxy target and defaults to
+`http://127.0.0.1:8080`.
+
+Use `npm run dev:web` or `npm run dev:server` to run either process separately.
+To connect the frontend to another portal server, set `PORTAL_API_URL` in
+`.env.local` and run `npm run dev:web`.
+
+## Build and serve
+
+```bash
+npm run build      # dist/ frontend and build/server.cjs API
+npm start          # serves both through the portal's HTTP server
+```
+
+The production server reads the same `PORTAL_CONFIG` file. Set its `origin` to
+the public HTTPS origin, configure its listening host/port, and put it behind
+your authenticated reverse proxy or other access boundary. Origin checks protect
+browser requests; they do not authenticate clients without an Origin header.
+Configured web origins and approved wallet extension origins may use the proxy.
+Remove local development origins from production configuration.
+
+`dist/` contains `app.js`, `app.css`, `theme.js`, wallet chunks, and public assets.
+The synchronous theme script applies the saved theme before CSS loads and works
+with `script-src 'self'`. The server bundle stays outside the public directory.
+`npm run preview` serves only the built frontend on port 4173 and proxies to the
+configured API; use `npm start` for the combined application.
+
+The optional faucet is disabled by default. Private testnet operators can set
+`faucet.kind` to `testnet`, provide an `akashKeyFile` containing a dedicated
+32-byte hexadecimal test key, and choose a portal-owned `stateFile`. Never enable
+it for production: it grants 100 AKT or 2 SOL, with five requests per wallet and
+100 requests total per UTC day. Allowances are charged before transmission;
+check the wallet before retrying an uncertain result. Run one faucet process
+per state file. The normal portal requires no signing key.
+
+The developer status endpoint reports the portal's verified RPC connectivity.
+Relayer/reporter process health and supply reconciliation remain operator
+monitoring responsibilities; the portal does not read another repository's
+process registry or claim a supply result it has not verified.
+
+`public/token/akt.json` contains private-testnet token metadata. Replace and
+version that metadata before any mainnet deployment.
+
+## Source layout
+
+```text
+src/
+  main.tsx             React startup
+  app/                 app shell, hash routes, header, and theme
+  features/
+    transfers/         form, review, receipts, history, and transfer state
+    wallets/           Akash/Solana connectors and unsigned draft recovery
+    developer/         network diagnostics and bridge diagram
+  components/          shared components and shadcn/ui primitives
+  hooks/               shared React hooks
+  lib/                 browser validation and display utilities
+  styles.css           Tailwind and application styles
+server/                HTTP server, API, wallet proxy, and optional testnet faucet
+  chain/               read-only chain adapters and bundled contract interfaces
+shared/                API types and chain message/identity helpers
+public/                static fonts, logos, wallet icons, and token metadata
+test/                  component-test setup
+e2e/                   Playwright checks and fixtures
+scripts/               SDK packaging, dev processes, and pre-paint theme build
+```
+
+Node tests (`*.test.ts`) and component specs (`*.spec.tsx` / `*.spec.ts`) live
+beside their source modules. The `@/` alias points to `src/`.
 
 ## Wallets
 
@@ -41,8 +131,8 @@ WALLETCONNECT_PROJECT_ID=<portal-project-id> npm run build
 The ID is public configuration, not a private key. Mobile wallets must support the configured
 Akash chain; private fork support is not implied by mainnet support.
 
-Serve over HTTPS. The server’s `Content-Security-Policy` must allow the wallet
-transports in addition to existing same-origin API traffic:
+Serve over HTTPS. The portal server includes these wallet transports in its
+`Content-Security-Policy` alongside same-origin API traffic:
 
 ```text
 connect-src 'self' https://explorer-api.walletconnect.com https://relay.walletconnect.com https://relay.walletconnect.org wss://relay.walletconnect.com wss://relay.walletconnect.org https://verify.walletconnect.com https://verify.walletconnect.org https://pulse.walletconnect.org https://echo.walletconnect.com ws://localhost:*;
@@ -50,9 +140,8 @@ frame-src 'self' https://verify.walletconnect.com https://verify.walletconnect.o
 ```
 
 Keep the other directives, including `script-src 'self'`. The loopback WebSocket
-is Android’s local wallet transport. Apply these directives in the serving backend
-or proxy: this static build cannot relax an existing `connect-src 'self'` response
-header. See [Reown’s CSP guidance](https://docs.reown.com/advanced/security/content-security-policy).
+is Android’s local wallet transport. Preserve these allowances in any reverse
+proxy that adds its own Content-Security-Policy header. See [Reown’s CSP guidance](https://docs.reown.com/advanced/security/content-security-policy).
 
 A wallet-browser handoff carries only the unsigned amount, destination and network
 identity in the URL fragment. Reloads retain the same draft in session storage for
@@ -67,7 +156,7 @@ prove those app/relay flows or a live transfer.
 
 ```bash
 npm run typecheck
-npm test             # unit tests and component specs
+npm test             # frontend/server tests and component specs
 npm run test:wallets  # built-page wallet fixtures, no live funds or relay
 npm run format:check
 ```

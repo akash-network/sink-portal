@@ -1,5 +1,5 @@
 import { toBech32 } from "@cosmjs/encoding";
-import type { BridgeConfig } from "../../contracts";
+import type { BridgeConfig } from "../../shared/contracts";
 import { solanaDestination } from "./wallet/test-wallets";
 
 export function walletNetwork(): BridgeConfig {

@@ -1,0 +1,25 @@
+{
+  "origin": "http://127.0.0.1:8080",
+  "host": "127.0.0.1",
+  "port": 8080,
+  "allowedOrigins": ["http://127.0.0.1:5173", "http://127.0.0.1:4173"],
+  "akash": {
+    "rpcUrl": "http://127.0.0.1:26657",
+    "restUrl": "http://127.0.0.1:1317",
+    "chainId": "SET_AKASH_CHAIN_ID",
+    "genesisTime": "SET_AKASH_GENESIS_TIME"
+  },
+  "solana": {
+    "rpcUrl": "http://127.0.0.1:8899",
+    "genesisHash": "SET_SOLANA_GENESIS_HASH",
+    "programId": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5",
+    "mint": "EnEomHaBpuMZZLN4TPtVAsqVofzMSkrPWYhEQ1cFjKv1"
+  },
+  "fee": {
+    "amountUakt": "12500",
+    "gas": "500000"
+  },
+  "faucet": {
+    "kind": "disabled"
+  }
+}

@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
-import { parseSinkId } from "../../lib/id";
-import { checkDestination } from "../../model";
+import { parseSinkId } from "../../shared/id";
+import { checkDestination } from "../../src/lib/model";
 
 // The example is committed; a mnemonic there would end up in Git history.
 const exampleFile = join(__dirname, "..", ".env.example");

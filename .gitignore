@@ -1,7 +1,11 @@
 .DS_Store
 node_modules/
 dist/
+build/
+portal.config.json
 .cache/
 *.log
 *.tgz
 e2e/.env.local
+.env.local
+.env.*.local

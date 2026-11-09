@@ -1,5 +1,5 @@
 import type { APIRequestContext } from "@playwright/test";
-import { parseConfig, parseSaved, record } from "../../model";
+import { parseConfig, parseSaved, record } from "../../src/lib/model";
 import { testEnvConfig } from "./test-env.config";
 
 export interface PortalNetwork {

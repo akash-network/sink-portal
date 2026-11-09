@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import type { BridgeConfig } from "../../contracts";
+import type { BridgeConfig } from "../../shared/contracts";
 
 export type ConfigEdit = (config: BridgeConfig) => void;
 

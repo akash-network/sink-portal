@@ -1,5 +1,5 @@
 import { test as baseTest } from "@playwright/test";
-import { parseReceipt } from "../../model";
+import { parseReceipt } from "../../src/lib/model";
 import { serveLocalUi } from "./local-ui";
 import { readPortalNetwork, type PortalNetwork } from "./network";
 import { testEnvConfig } from "./test-env.config";
