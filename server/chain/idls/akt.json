@@ -1,5 +1,5 @@
 {
-  "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5",
+  "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME",
   "metadata": {
     "name": "akt",
     "version": "0.1.0",
@@ -162,7 +162,7 @@
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "program_data"
@@ -486,7 +486,7 @@
           "docs": [
             "This program. Anchor checks its address and executable flag."
           ],
-          "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+          "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
         },
         {
           "name": "program_data",
@@ -845,7 +845,7 @@
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "program_data"
@@ -927,7 +927,7 @@
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "program_data"
@@ -1011,7 +1011,7 @@
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "program_data"
@@ -1098,7 +1098,7 @@
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "program_data"
@@ -1177,7 +1177,7 @@
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "program_data"

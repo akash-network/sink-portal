@@ -5,7 +5,7 @@
  * IDL can be found at `target/idl/akt.json`.
  */
 export type Akt = {
-  "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5",
+  "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME",
   "metadata": {
     "name": "akt",
     "version": "0.1.0",
@@ -168,7 +168,7 @@ export type Akt = {
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "programData"
@@ -492,7 +492,7 @@ export type Akt = {
           "docs": [
             "This program. Anchor checks its address and executable flag."
           ],
-          "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+          "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
         },
         {
           "name": "programData",
@@ -851,7 +851,7 @@ export type Akt = {
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "programData"
@@ -933,7 +933,7 @@ export type Akt = {
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "programData"
@@ -1017,7 +1017,7 @@ export type Akt = {
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "programData"
@@ -1104,7 +1104,7 @@ export type Akt = {
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "programData"
@@ -1183,7 +1183,7 @@ export type Akt = {
           "accounts": [
             {
               "name": "program",
-              "address": "FfFAPUKqjf68ggj1HvpyzMHFDRnT2cFAdZYYQb7mK9i5"
+              "address": "98inUHb5mMaHWQZ9ut9PGrnmkMpncLZWWAyFwxCWagME"
             },
             {
               "name": "programData"
