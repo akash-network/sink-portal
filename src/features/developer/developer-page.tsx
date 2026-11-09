@@ -12,6 +12,7 @@ import { BridgeFlow } from "./bridge-flow";
 import { Badge } from "../../components/ui/badge";
 import { fresh } from "../../lib/model";
 import { Label } from "../../components/ui/label";
+import { networkLabel } from "../../lib/network";
 
 function Definitions({ id, rows }: { id?: string; rows: [string, string][] }) {
   return (
@@ -89,7 +90,13 @@ export function Developer({ state }: { state: BridgeState }) {
       <BridgeFlow />
       <Panel
         title="Network"
-        action={<Badge variant="outline">Private testnet</Badge>}
+        action={
+          state.config && (
+            <Badge variant="outline">
+              {networkLabel(state.config.network.chainId)}
+            </Badge>
+          )
+        }
       >
         <p
           id="state"

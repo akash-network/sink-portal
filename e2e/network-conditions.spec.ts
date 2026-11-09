@@ -190,7 +190,7 @@ test.describe("Network conditions", () => {
       await page.clock.fastForward(15_000);
 
       await expect(transferPage.transferCard.getByRole("alert")).toHaveText(
-        "The testnet identity changed. Reconnect Keplr before another transfer.",
+        "The network identity changed. Reconnect Keplr before another transfer.",
       );
       await expect(transferPage.connectKeplrButton).toBeVisible();
     });

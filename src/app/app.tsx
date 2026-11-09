@@ -7,6 +7,7 @@ import { Header } from "./header";
 import { TransferPage } from "../features/transfers/transfer-page";
 import { Developer } from "../features/developer/developer-page";
 import { ThemeControl } from "./theme-control";
+import { networkLabel } from "../lib/network";
 
 const AkashWallets = lazy(() => import("../features/wallets/akash-wallets"));
 
@@ -67,7 +68,11 @@ export function App() {
         <div className="wrap flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-5">
           <span className="help">Akash Sink · Akash → Solana, one way</span>
           <div className="flex items-center gap-2">
-            <span className="over">Private testnet</span>
+            {state.config && (
+              <span className="over">
+                {networkLabel(state.config.network.chainId)}
+              </span>
+            )}
             <ThemeControl />
           </div>
         </div>

@@ -294,7 +294,7 @@ test.describe("Akash Sink portal", () => {
       );
 
       await expect(details.dialog).toContainText(
-        "This transaction belongs to a different testnet.",
+        "This transaction belongs to a different network.",
       );
     });
 

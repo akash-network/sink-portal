@@ -65,7 +65,7 @@ export function TransferDialog({
     if (currentNetwork !== networkKey) {
       setResult({
         kind: "error",
-        message: "This transaction belongs to a different testnet.",
+        message: "This transaction belongs to a different network.",
       });
       return;
     }
@@ -153,7 +153,7 @@ export function TransferDialog({
               {result.kind === "error"
                 ? result.message
                 : result.kind === "loading"
-                  ? "Reading the private testnet."
+                  ? "Reading Akash and Solana."
                   : view?.tone === "success"
                     ? deposit?.solana.kind === "minted"
                       ? "Received in your Solana wallet."

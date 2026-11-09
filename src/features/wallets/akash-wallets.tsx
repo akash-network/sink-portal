@@ -12,6 +12,7 @@ import { Modal } from "../../components/modal";
 import type { BridgeConfig } from "../../../shared/contracts";
 import { message } from "../../lib/model";
 import { akashSigner } from "./wallet-session";
+import { isMainnet } from "../../lib/network";
 
 declare const WALLETCONNECT_PROJECT_ID: string;
 const projectId =
@@ -28,10 +29,10 @@ function akashChain(
     chain_name: "akash",
     chain_type: "cosmos",
     chain_id: config.network.chainId,
-    pretty_name:
-      config.network.chainId === "akashnet-2" ? "Akash" : "Akash Sink Testnet",
-    network_type:
-      config.network.chainId === "akashnet-2" ? "mainnet" : "testnet",
+    pretty_name: isMainnet(config.network.chainId)
+      ? "Akash"
+      : "Akash Sink Testnet",
+    network_type: isMainnet(config.network.chainId) ? "mainnet" : "testnet",
     bech32_prefix: "akash",
     slip44: 118,
     key_algos: ["secp256k1"],

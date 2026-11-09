@@ -8,11 +8,11 @@ on:
   workflow_dispatch:
     inputs:
       chain_sdk_ref:
-        description: chain-sdk ref with the x/sink API
-        default: feat/sink
+        description: chain-sdk ref with the x/sink API (default is the tag akash-network/node uses)
+        default: refs/tags/go/v0.5.0-rc2
 
 env:
-  CHAIN_SDK_REF: ${{ inputs.chain_sdk_ref || 'feat/sink' }}
+  CHAIN_SDK_REF: ${{ inputs.chain_sdk_ref || 'refs/tags/go/v0.5.0-rc2' }}
 
 permissions:
   contents: write
