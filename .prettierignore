@@ -5,3 +5,4 @@ server/chain/idls
 .cache
 package-lock.json
 public/assets
+.chain-sdk
