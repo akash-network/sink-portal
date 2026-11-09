@@ -1,0 +1,12 @@
+.git
+node_modules
+dist
+build
+.env*
+portal.config.json
+test-results
+playwright-report
+e2e/.env.local
+.cache/*
+!.cache/chain-sdk.tgz
+.chain-sdk

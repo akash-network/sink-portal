@@ -84,6 +84,17 @@ test("portal serves its build, bounds the proxy, and fails unavailable chains wi
     home.headers.get("content-security-policy") ?? "",
     /wss:\/\/relay.walletconnect.com/,
   );
+  const health = await fetch(`${origin}/healthz`);
+  assert.equal(health.status, 200);
+  assert.deepEqual(await health.json(), { ok: true });
+  assert.equal(
+    (await fetch(`${origin}/healthz`, { method: "HEAD" })).status,
+    200,
+  );
+  assert.equal(
+    (await fetch(`${origin}/healthz`, { method: "POST" })).status,
+    404,
+  );
   for (const query of ["id=7", "id=bad", "tx=bad", "id=bad&tx=bad"]) {
     const response = await fetch(`${origin}/api/receipt?${query}`);
     assert.equal(response.status, 400);

@@ -1,0 +1,103 @@
+# Release: GitHub release (web app + server archive, checksums) and a multi-arch image on GHCR,
+# in the same shape as akash-network/node. Run by .github/workflows/release.yaml on v* tags.
+#
+# Before goreleaser runs, the workflow packs the x/sink chain-sdk (.cache/chain-sdk.tgz) and runs
+# `npm ci`; the hook below builds dist/ and build/server.cjs for the archive. The image builds the
+# same sources itself (Dockerfile), so it does not depend on the host's node_modules.
+#
+# Local check: goreleaser release --snapshot --clean
+version: 2
+project_name: sink-portal
+dist: ./.cache/goreleaser
+
+env:
+  - DOCKER_IMAGE={{ envOrDefault "DOCKER_IMAGE" "ghcr.io/akash-network/sink-portal" }}
+  - CHAIN_SDK_REVISION={{ envOrDefault "CHAIN_SDK_REVISION" "unknown" }}
+
+before:
+  hooks:
+    - npm run build
+
+# Not a Go project: nothing for goreleaser to compile.
+builds:
+  - skip: true
+
+archives:
+  - id: portal
+    meta: true
+    name_template: "sink-portal_{{ .Version }}"
+    formats: [tar.gz]
+    files:
+      - dist/**/*
+      - build/server.cjs
+      - package.json
+      - package-lock.json
+      - server/config.example.json
+      - Dockerfile
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: "sink-portal_{{ .Version }}_checksums.txt"
+
+dockers_v2:
+  - id: portal
+    dockerfile: Dockerfile
+    images:
+      - "{{ .Env.DOCKER_IMAGE }}"
+    tags:
+      - "{{ .Version }}"
+      - "{{ .ShortCommit }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    build_args:
+      PORTAL_REVISION: "{{ .FullCommit }}"
+      CHAIN_SDK_REVISION: "{{ .Env.CHAIN_SDK_REVISION }}"
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: "Akash Sink portal: web app and API"
+      org.opencontainers.image.url: "{{ .GitURL }}"
+      org.opencontainers.image.source: "{{ .GitURL }}"
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      network.akash.chain-sdk.revision: "{{ .Env.CHAIN_SDK_REVISION }}"
+    # The image is built from source, so the build context needs the tracked tree (plus the packed
+    # chain-sdk). Keep this list in sync with new top-level paths.
+    extra_files:
+      - .cache/chain-sdk.tgz
+      - .dockerignore
+      - .npmrc
+      - .nvmrc
+      - components.json
+      - index.html
+      - package-lock.json
+      - package.json
+      - public
+      - scripts
+      - server
+      - shared
+      - src
+      - tsconfig.json
+      - tsconfig.node.json
+      - vite.config.mts
+      - vitest.config.mts
+
+release:
+  github:
+    owner: akash-network
+    name: sink-portal
+  prerelease: auto
+  mode: replace
+  draft: false
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"

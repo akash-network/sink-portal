@@ -1,0 +1,66 @@
+name: release
+
+# Same shape as akash-network/node: goreleaser publishes the GitHub release (archive + checksums)
+# and the multi-arch image ghcr.io/akash-network/sink-portal. Runs on v* tags, or manually on a tag.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      chain_sdk_ref:
+        description: chain-sdk ref with the x/sink API
+        default: feat/sink
+
+env:
+  CHAIN_SDK_REF: ${{ inputs.chain_sdk_ref || 'feat/sink' }}
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: akash-network/chain-sdk
+          ref: ${{ env.CHAIN_SDK_REF }}
+          path: .chain-sdk
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Pack chain-sdk
+        run: |
+          CHAIN_SDK_DIR="$GITHUB_WORKSPACE/.chain-sdk" npm run sdk
+          echo "CHAIN_SDK_REVISION=$(git -C .chain-sdk rev-parse HEAD)" >> "$GITHUB_ENV"
+          rm -rf .chain-sdk
+
+      - name: Install
+        run: |
+          node scripts/unpin-sdk.mjs
+          npm ci
+          git checkout -- package-lock.json
+
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

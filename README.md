@@ -86,8 +86,49 @@ Relayer/reporter process health and supply reconciliation remain operator
 monitoring responsibilities; the portal does not read another repository's
 process registry or claim a supply result it has not verified.
 
-`public/token/akt.json` contains private-testnet token metadata. Replace and
-version that metadata before any mainnet deployment.
+### Token metadata
+
+`public/token/v1/akt.json` holds the **mainnet** AKT metadata. It's a byte-identical copy of
+`contracts/solana/metadata/akt.json` in akash-network/node, which pins the logo by its
+chain-registry revision (SHA-256 `2f88bb20…5ce1`). It's served with
+`Access-Control-Allow-Origin: *` at `https://<portal>/token/v1/akt.json`; that is the URI for
+`set_token_metadata`.
+
+- **Never change a published version.** For any change, add `/token/v2/akt.json` and point the
+  metadata at it.
+- **Record the file's hash** with the launch record.
+- **Unversioned path:** `public/token/akt.json` carries the same content, so the old path
+  doesn't serve testnet metadata.
+
+## Docker image and releases
+
+Pack the chain-sdk first (`npm run sdk`); the image installs it from `.cache/chain-sdk.tgz`.
+
+```bash
+docker build -t sink-portal .
+docker run -p 8080:8080 \
+  -v "$PWD/portal.config.json:/etc/sink-portal/portal.config.json:ro" sink-portal
+```
+
+The image runs `node build/server.cjs` as the `node` user (UID 1000) and reads
+`PORTAL_CONFIG=/etc/sink-portal/portal.config.json`. Set `"host": "0.0.0.0"` in that
+config. The file must be readable by UID 1000. The container works with a read-only root
+filesystem.
+
+`GET /healthz` returns `200 {"ok":true}` once the server has started with a valid config.
+It makes no chain calls, so load balancers can use it without an upstream outage taking
+every origin out at once. `/api/status` reports chain reachability.
+
+Releases follow akash-network/node. Pushing a `v*` tag runs `.github/workflows/release.yaml`.
+GoReleaser then publishes:
+
+- the GitHub release, with a `dist/` + `build/server.cjs` archive and checksums
+- `ghcr.io/akash-network/sink-portal`, a multi-arch image (`linux/amd64`, `linux/arm64`) tagged
+  `<version>`, `<short commit>` and `latest` (stable releases only)
+
+`CHAIN_SDK_REF` in the workflows selects the chain-sdk branch with the x/sink API. Change it
+once that API is on chain-sdk `main`. To check a release locally:
+`goreleaser release --snapshot --clean`.
 
 ## Source layout
 
