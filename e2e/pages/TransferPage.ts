@@ -51,12 +51,14 @@ export class TransferPage {
   }
 
   get connectSolanaButton() {
-    return this.transferCard.getByRole("button", { name: "Connect Wallet" });
+    return this.transferCard.getByRole("button", {
+      name: "Connect Solana wallet",
+    });
   }
 
   solanaWalletOption(name: SolanaWalletName) {
     return this.transferCard
-      .getByRole("group", { name: "Choose a Solana wallet" })
+      .getByRole("dialog", { name: "Connect Solana wallet" })
       .getByRole("button", { name });
   }
 
@@ -110,7 +112,7 @@ export class TransferPage {
   async connectKeplr() {
     await this.connectKeplrButton.click();
     await this.page
-      .getByRole("dialog", { name: "Connect an Akash wallet" })
+      .getByRole("dialog", { name: "Connect Akash wallet" })
       .getByRole("button", { name: "Keplr", exact: true })
       .click();
   }

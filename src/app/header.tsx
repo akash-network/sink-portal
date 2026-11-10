@@ -40,8 +40,10 @@ export function Header({ state }: { state: BridgeState }) {
             className="btn btn-pri"
             onClick={() => bridge.chooseAkashWallet()}
             disabled={!state.canConnect}
+            aria-haspopup="dialog"
+            aria-expanded={state.akashPicker}
           >
-            <Wallet className="ico" aria-hidden="true" />
+            <Wallet className="ico max-[359px]:hidden" aria-hidden="true" />
             {state.akashConnecting ? "Connecting…" : "Connect Akash wallet"}
           </button>
         )}

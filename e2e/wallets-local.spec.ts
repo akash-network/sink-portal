@@ -58,7 +58,7 @@ test("[desktop] rejection remains disconnected and the picker can close", async 
 }) => {
   const { view, errors } = await setup(page, [], "reject");
   await view.connectKeplr();
-  const dialog = page.getByRole("dialog", { name: "Connect an Akash wallet" });
+  const dialog = page.getByRole("dialog", { name: "Connect Akash wallet" });
   await expect(dialog.getByRole("alert")).toContainText(/reject/i);
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(view.connectKeplrButton).toBeEnabled();
@@ -100,7 +100,6 @@ test("missing wallets offer paste and mobile browser links, not false installed 
   await expect(view.transferCard).toContainText(
     "No wallet found in this browser",
   );
-  await expect(view.destinationInput).toBeEnabled();
   if (isMobile) {
     for (const name of ["Phantom", "Solflare"]) {
       const icon = view.transferCard
@@ -119,6 +118,12 @@ test("missing wallets offer paste and mobile browser links, not false installed 
     expect(href).toMatch(/^https:\/\/phantom.com\/ul\/browse\//);
     expect(decodeURIComponent(href!)).toContain("127.0.0.1:4178/");
   }
+  await page
+    .getByRole("dialog", { name: "Connect Solana wallet" })
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+  await expect(view.connectSolanaButton).toBeFocused();
+  await expect(view.destinationInput).toBeEnabled();
   expect(errors).toEqual([]);
 });
 
@@ -144,15 +149,16 @@ test("Akash picker offers only Keplr with icons and mobile enabled", async ({
 }) => {
   const { view, errors } = await setup(page);
   await view.connectKeplrButton.click();
-  const dialog = page.getByRole("dialog", { name: "Connect an Akash wallet" });
+  const dialog = page.getByRole("dialog", { name: "Connect Akash wallet" });
   const mobileWallet = dialog.getByRole("button", {
     name: "Keplr Mobile",
     exact: true,
   });
   await expect(mobileWallet).toBeEnabled();
-  await expect(dialog.getByRole("button")).toHaveText(
-    isMobile ? ["Close", "Keplr Mobile"] : ["Close", "Keplr", "Keplr Mobile"],
-  );
+  await expect(dialog.getByRole("button")).toHaveCount(isMobile ? 2 : 3);
+  await expect(
+    dialog.getByRole("button", { name: "Keplr", exact: true }),
+  ).toHaveCount(isMobile ? 0 : 1);
   await expect(dialog).not.toContainText("isn’t configured");
   const icons = dialog.locator("img");
   await expect(icons).toHaveCount(isMobile ? 1 : 2);
@@ -162,6 +168,35 @@ test("Akash picker offers only Keplr with icons and mobile enabled", async ({
         icon.evaluate((image: HTMLImageElement) => image.naturalWidth),
       )
       .toBeGreaterThan(0);
+  }
+  expect(errors).toEqual([]);
+});
+
+test("wallet dialogs keep keyboard focus inside and return it to each opener", async ({
+  page,
+}) => {
+  const { view, errors } = await setup(page);
+  for (const [opener, name] of [
+    [view.connectKeplrButton, "Connect Akash wallet"],
+    [
+      view.header.getByRole("button", { name: "Connect Akash wallet" }),
+      "Connect Akash wallet",
+    ],
+    [view.connectSolanaButton, "Connect Solana wallet"],
+  ] as const) {
+    await opener.click();
+    const dialog = page.getByRole("dialog", { name });
+    const close = dialog.getByRole("button", { name: "Close", exact: true });
+    await expect(close).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(
+      dialog.getByRole("button").or(dialog.getByRole("link")).last(),
+    ).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(close).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(opener).toBeFocused();
   }
   expect(errors).toEqual([]);
 });

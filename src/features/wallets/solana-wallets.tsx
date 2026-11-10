@@ -5,14 +5,15 @@ import {
 } from "@solana/connector/react";
 import { bridge, type BridgeState } from "../transfers/controller";
 import { mobileWalletUrl } from "./wallet-draft";
+import { WalletPicker } from "./wallet-picker";
 
 function WalletList({
   state,
-  onSelect,
+  onClose,
   open,
 }: {
   state: BridgeState;
-  onSelect: () => void;
+  onClose: () => void;
   open: boolean;
 }) {
   const client = useConnectorClient();
@@ -22,19 +23,16 @@ function WalletList({
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   if (!open) return null;
   return (
-    <div
-      className="card flex flex-col gap-2 p-3"
-      role="group"
-      aria-label="Choose a Solana wallet"
-    >
+    <WalletPicker network="Solana" onClose={onClose}>
       {wallets.map((wallet) => (
         <button
           key={wallet.id}
+          type="button"
           className="btn btn-out wallet-option"
           disabled={!client || !wallet.ready}
           onClick={() => {
             if (client) {
-              onSelect();
+              onClose();
               void bridge.connectSolana(client, wallet.id);
             }
           }}
@@ -44,7 +42,7 @@ function WalletList({
             alt=""
             width={28}
             height={28}
-            className="rounded-md"
+            className="shrink-0 rounded-md"
           />
           {wallet.name}
         </button>
@@ -73,7 +71,7 @@ function WalletList({
                 alt=""
                 width={28}
                 height={28}
-                className="rounded-md"
+                className="shrink-0 rounded-md"
               />
               Open in {name}
             </a>
@@ -90,10 +88,7 @@ function WalletList({
           Get a Solana wallet
         </a>
       )}
-      <p className="help">
-        Address only. No Solana signature or payment is requested.
-      </p>
-    </div>
+    </WalletPicker>
   );
 }
 
@@ -101,7 +96,7 @@ const config = { autoConnect: false };
 const mobile = { appIdentity: { name: "Akash Sink", uri: location.origin } };
 export default function SolanaWallets(props: {
   state: BridgeState;
-  onSelect: () => void;
+  onClose: () => void;
   open: boolean;
 }) {
   return (

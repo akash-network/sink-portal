@@ -324,6 +324,7 @@
   .ab .btn-pri:disabled {
     background: var(--muted);
     color: var(--mfg);
+    border-color: var(--bd);
     cursor: not-allowed;
   }
   .ab .btn-out {

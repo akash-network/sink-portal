@@ -8,7 +8,7 @@ import {
 import { KeplrMobileWallet, keplrMobileInfo } from "@cosmos-kit/keplr-mobile";
 import QRCode from "qrcode";
 import { bridge, type BridgeState } from "../transfers/controller";
-import { Modal } from "../../components/modal";
+import { WalletPicker } from "./wallet-picker";
 import type { BridgeConfig } from "../../../shared/contracts";
 import { message } from "../../lib/model";
 import { akashSigner } from "./wallet-session";
@@ -145,16 +145,8 @@ function WalletList({ state }: { state: BridgeState }) {
   });
   if (!state.akashPicker) return null;
   return (
-    <Modal labelledBy="akash-wallet-title" onEscape={bridge.closeAkashPicker}>
-      <div className="flex items-center justify-between gap-3">
-        <h2 id="akash-wallet-title" className="h2">
-          Connect an Akash wallet
-        </h2>
-        <button className="btn btn-ghost" onClick={bridge.closeAkashPicker}>
-          Close
-        </button>
-      </div>
-      <div className="my-4 flex flex-col gap-2">
+    <WalletPicker network="Akash" onClose={bridge.closeAkashPicker}>
+      <div className="flex flex-col gap-2">
         {repo.wallets
           .filter(
             (wallet) =>
@@ -166,6 +158,7 @@ function WalletList({ state }: { state: BridgeState }) {
           .map((wallet) => (
             <button
               key={wallet.walletName}
+              type="button"
               className="btn btn-out wallet-option"
               disabled={state.akashConnecting || wallet.isWalletConnecting}
               onClick={() => {
@@ -200,7 +193,7 @@ function WalletList({ state }: { state: BridgeState }) {
                 alt=""
                 width={28}
                 height={28}
-                className="rounded-md"
+                className="shrink-0 rounded-md"
               />
               {wallet.walletPrettyName}
             </button>
@@ -210,15 +203,14 @@ function WalletList({ state }: { state: BridgeState }) {
         <Pairing wallet={selected} />
       )}
       {state.notice?.scope === "akash" && (
-        <p role={state.notice.tone === "error" ? "alert" : "status"}>
+        <p
+          role={state.notice.tone === "error" ? "alert" : "status"}
+          className={state.notice.tone === "error" ? "err" : "help"}
+        >
           {state.notice.text}
         </p>
       )}
-      <p className="help">
-        Your wallet signs on Akash. The portal never receives your recovery
-        phrase.
-      </p>
-    </Modal>
+    </WalletPicker>
   );
 }
 export default function AkashWallets({

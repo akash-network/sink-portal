@@ -40,11 +40,11 @@ test.describe("Wallet connections", () => {
 
         await expect(
           page
-            .getByRole("dialog", { name: "Connect an Akash wallet" })
+            .getByRole("dialog", { name: "Connect Akash wallet" })
             .getByRole("alert"),
         ).toHaveText("Request rejected");
         await page
-          .getByRole("dialog", { name: "Connect an Akash wallet" })
+          .getByRole("dialog", { name: "Connect Akash wallet" })
           .getByRole("button", { name: "Close", exact: true })
           .click();
         await expect(transferPage.connectKeplrButton).toBeEnabled();

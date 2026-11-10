@@ -80,17 +80,17 @@ function Destination({
             <div className="flex min-w-0 items-center gap-3">
               <IconTile />
               <div className="flex min-w-0 flex-col">
-                <span className="lbl">Connect your Solana wallet</span>
+                <span className="lbl">Solana wallet</span>
                 <span className="help">
-                  Fills in your address, so there’s nothing to mistype.
-                  Read-only. You won’t sign anything.
+                  Use your wallet’s receiving address. No Solana signature
+                  required.
                 </span>
               </div>
             </div>
             <button
               id="connect-solana"
               type="button"
-              className="btn btn-out"
+              className="btn btn-out shrink-0"
               onClick={() => {
                 setWalletsOpened(true);
                 setPicker((open) => !open);
@@ -99,8 +99,9 @@ function Destination({
                 formOff || !state.canConnect || !!state.solanaConnecting
               }
               aria-expanded={picker}
+              aria-haspopup="dialog"
             >
-              {state.solanaConnecting ? "Connecting…" : "Connect Wallet"}
+              {state.solanaConnecting ? "Connecting…" : "Connect Solana wallet"}
             </button>
           </div>
           <div className="flex items-center gap-3 pt-1" aria-hidden="true">
@@ -180,7 +181,7 @@ function Destination({
           <SolanaWallets
             state={state}
             open={!wallet && picker && !state.solanaConnecting}
-            onSelect={() => setPicker(false)}
+            onClose={() => setPicker(false)}
           />
         </WalletLoader>
       )}
@@ -384,22 +385,25 @@ export function TransferCard({
           </div>
         ) : (
           <div className="flex flex-col gap-2">
+            <span className="over">From · Akash</span>
             <div className="well stack-sm flex items-center justify-between gap-4 p-4">
               <div className="flex min-w-0 items-center gap-3">
                 <IconTile />
                 <div className="flex min-w-0 flex-col">
-                  <span className="lbl">Connect Akash wallet to start</span>
+                  <span className="lbl">Akash wallet</span>
                   <span className="help">
-                    You send AKT from your Akash wallet on Akash.
+                    Send AKT and approve the transfer in your wallet.
                   </span>
                 </div>
               </div>
               <button
                 id="connect-keplr-form"
                 type="button"
-                className="btn btn-pri"
+                className="btn btn-out shrink-0"
                 onClick={() => bridge.chooseAkashWallet()}
-                disabled={!state.canConnect}
+                disabled={formOff || !state.canConnect}
+                aria-haspopup="dialog"
+                aria-expanded={state.akashPicker}
               >
                 {state.akashConnecting ? "Connecting…" : "Connect Akash wallet"}
               </button>

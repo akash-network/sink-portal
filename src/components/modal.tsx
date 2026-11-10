@@ -26,10 +26,15 @@ export function Modal({
   useEffect(() => {
     const node = ref.current;
     if (!node || node.contains(document.activeElement)) return;
+    const previousFocus = document.activeElement;
     const target =
       (initialFocus && document.getElementById(initialFocus)) ||
       node.querySelector<HTMLElement>(focusable);
     target?.focus({ preventScroll: true });
+    return () => {
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
+        previousFocus.focus({ preventScroll: true });
+    };
   }, [initialFocus]);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Escape") {
