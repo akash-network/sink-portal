@@ -66,7 +66,7 @@ export function App() {
       </main>
       <footer className="border-t border-[var(--bd)]">
         <div className="wrap flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-5">
-          <span className="help">Akash Sink · Akash → Solana, one way</span>
+          <span className="help">Akash → Solana, one way</span>
           <div className="flex items-center gap-2">
             {state.config && (
               <span className="over">
