@@ -73,6 +73,27 @@ export function useQuota(networkKey: string | undefined, owner: string | null) {
 
 type QuotaView = ReturnType<typeof useQuota>;
 
+export function depositBlocker({ data, current, loading, now }: QuotaView) {
+  if (
+    data?.epochStarted &&
+    BigInt(data.deposits.usedUakt) >= BigInt(data.deposits.capUakt)
+  )
+    return "The global deposit cap has been reached.";
+  if (
+    data?.account &&
+    BigInt(data.account.capUakt) > 0n &&
+    BigInt(data.account.usedUakt) >= BigInt(data.account.capUakt)
+  )
+    return "Your wallet’s deposit cap has been reached.";
+  if (!current || !data)
+    return loading
+      ? "Checking deposit limits…"
+      : "Deposit limits are unavailable. Waiting for a fresh update.";
+  if (!data.epochStarted || now >= Date.parse(data.resetAt))
+    return "Waiting for updated deposit limits.";
+  return null;
+}
+
 function ResetTime({
   at,
   now,

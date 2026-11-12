@@ -6,6 +6,7 @@ import { Summary } from "./summary";
 
 export function Review({
   state,
+  depositBlock,
   suffix,
   ack,
   ackDest,
@@ -15,6 +16,7 @@ export function Review({
   onConfirm,
 }: {
   state: BridgeState;
+  depositBlock: string | null;
   suffix: string;
   ack: boolean;
   ackDest: boolean;
@@ -34,7 +36,8 @@ export function Review({
         ? "From an earlier transfer"
         : "Pasted address";
   const signing = state.busy;
-  const canConfirm = state.canReview && ack && ackDest && !signing;
+  const canConfirm =
+    state.canReview && !depositBlock && ack && ackDest && !signing;
   const ackHint =
     !ackDest && !ack
       ? "Tick both boxes to continue."
@@ -97,7 +100,7 @@ export function Review({
             className="chk"
             checked={ackDest}
             onChange={(event) => setAckDest(event.target.checked)}
-            disabled={signing}
+            disabled={signing || !!depositBlock}
           />
           <span className="lbl">I checked this is my Solana address.</span>
         </label>
@@ -133,7 +136,7 @@ export function Review({
             className="chk"
             checked={ack}
             onChange={(event) => setAck(event.target.checked)}
-            disabled={signing}
+            disabled={signing || !!depositBlock}
           />
           <span className="lbl">I understand this transfer is one way.</span>
         </label>
@@ -159,7 +162,14 @@ export function Review({
             {signing ? "Approve in Akash wallet…" : "Confirm in Akash wallet"}
           </button>
         </div>
-        {ackHint && !signing && <p className="help text-center">{ackHint}</p>}
+        {!signing && (depositBlock || ackHint) && (
+          <p
+            className="help text-center"
+            role={depositBlock ? "status" : undefined}
+          >
+            {depositBlock || ackHint}
+          </p>
+        )}
         {signing && (
           <p className="help text-center" aria-hidden="true">
             Approve the transaction in Akash wallet.

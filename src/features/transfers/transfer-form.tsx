@@ -15,7 +15,7 @@ import { clientPause } from "../../lib/model";
 import { Notice } from "../wallets/notice";
 import { useCopy } from "../../hooks/use-copy";
 import { Summary } from "./summary";
-import { WalletQuota, type useQuota } from "./quota";
+import { depositBlocker, WalletQuota, type useQuota } from "./quota";
 
 const SolanaWallets = lazy(() => import("../wallets/solana-wallets"));
 
@@ -42,8 +42,8 @@ function Destination({
   const wallet = destination.source === "wallet" ? destination.wallet : null;
   const bad = check.state === "invalid" || check.state === "account";
   useEffect(() => {
-    if (state.solanaConnecting) setPicker(false);
-  }, [state.solanaConnecting]);
+    if (state.solanaConnecting || formOff) setPicker(false);
+  }, [state.solanaConnecting, formOff]);
   return (
     <div className="flex flex-col gap-2">
       <span className="over">To · Solana</span>
@@ -181,7 +181,7 @@ function Destination({
         <WalletLoader>
           <SolanaWallets
             state={state}
-            open={!wallet && picker && !state.solanaConnecting}
+            open={!formOff && !wallet && picker && !state.solanaConnecting}
             onClose={() => setPicker(false)}
           />
         </WalletLoader>
@@ -254,6 +254,7 @@ function Amount({ state, formOff }: { state: BridgeState; formOff: boolean }) {
               type="button"
               className="btn btn-out btn-wrap"
               onClick={bridge.setMax}
+              disabled={formOff}
             >
               Send the max instead · {max} AKT
             </button>
@@ -279,6 +280,8 @@ export function TransferCard({
 }) {
   const [copied, copy] = useCopy();
   const formOff = overlay || state.busy;
+  const depositBlock = depositBlocker(quota);
+  const transferOff = formOff || !!depositBlock;
   const general =
     state.notice &&
     (state.notice.scope === "general" ||
@@ -295,7 +298,7 @@ export function TransferCard({
         className="flex flex-col gap-5"
         onSubmit={(event) => {
           event.preventDefault();
-          if (state.canReview && !overlay) onReview();
+          if (state.canReview && !transferOff) onReview();
         }}
       >
         <div className="flex items-center justify-between gap-3">
@@ -411,8 +414,8 @@ export function TransferCard({
             <Notice state={state} scope="akash" />
           </div>
         )}
-        <Destination state={state} formOff={formOff} />
-        <Amount state={state} formOff={formOff} />
+        <Destination state={state} formOff={transferOff} />
+        <Amount state={state} formOff={transferOff} />
         <WalletQuota owner={state.sender} quota={quota} />
         <Summary state={state} withSend />
         <div className="flex flex-col gap-2">
@@ -420,14 +423,14 @@ export function TransferCard({
             id="review-transfer"
             type="submit"
             className="btn btn-pri btn-lg btn-block"
-            disabled={!state.canReview || overlay}
+            disabled={!state.canReview || transferOff}
           >
             Review Transfer
             <ArrowRight className="ico" aria-hidden="true" />
           </button>
-          {!state.canReview && state.blocker && (
+          {(depositBlock || (!state.canReview && state.blocker)) && (
             <p id="review-blocker" className="help text-center">
-              {state.blocker}
+              {depositBlock || state.blocker}
             </p>
           )}
         </div>

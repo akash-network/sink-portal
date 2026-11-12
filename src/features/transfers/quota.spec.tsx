@@ -1,6 +1,7 @@
 import {
   act,
   cleanup,
+  fireEvent,
   render,
   renderHook,
   screen,
@@ -8,7 +9,15 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Quota } from "../../../shared/quota";
-import { GlobalQuotaWarning, useQuota, WalletQuota } from "./quota";
+import {
+  depositBlocker,
+  GlobalQuotaWarning,
+  useQuota,
+  WalletQuota,
+} from "./quota";
+import { bridge } from "./controller";
+import { TransferCard } from "./transfer-form";
+import { Review } from "./review";
 
 function quota(owner: string | null = "wallet-a"): Quota {
   return {
@@ -118,6 +127,136 @@ describe("global cap notices", () => {
   });
 });
 
+describe("deposit cap input lock", () => {
+  const state = () => ({
+    ...bridge.getSnapshot(),
+    canReview: true,
+    canConnect: true,
+    amountText: "1",
+    amount: 1_000_000n,
+    maxAmount: 10_000_000n,
+    balance: 10_000_000n,
+    fee: 12_500n,
+  });
+
+  it("locks destination, amount, Max and review at the cap while leaving Akash connection available", () => {
+    const data = quota(null);
+    const onReview = vi.fn();
+    const props = { state: state(), onReview, overlay: false };
+    const { rerender } = render(<TransferCard {...props} quota={view(data)} />);
+    expect(screen.getByLabelText("Amount")).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Review Transfer" }),
+    ).toBeEnabled();
+    data.deposits.usedUakt = data.deposits.capUakt;
+    rerender(<TransferCard {...props} quota={view(data)} />);
+    for (const label of ["Amount", "Paste a Solana address"])
+      expect(screen.getByLabelText(label)).toBeDisabled();
+    for (const name of [
+      "Max",
+      "Paste",
+      "Connect Solana wallet",
+      "Review Transfer",
+    ])
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Connect Akash wallet" }),
+    ).toBeEnabled();
+    fireEvent.submit(document.getElementById("transfer-form")!);
+    expect(onReview).not.toHaveBeenCalled();
+    rerender(
+      <TransferCard
+        {...props}
+        quota={{
+          ...view(data),
+          current: false,
+          now: Date.parse(data.resetAt) + 1000,
+        }}
+      />,
+    );
+    expect(screen.getByLabelText("Amount")).toBeDisabled();
+    data.deposits.usedUakt = "0";
+    data.epoch = "235";
+    data.resetAt = new Date(Date.now() + 86400_000).toISOString();
+    rerender(<TransferCard {...props} quota={view(data)} />);
+    expect(screen.getByLabelText("Amount")).toBeEnabled();
+    expect(screen.getByLabelText("Amount")).toHaveValue("1");
+    fireEvent.submit(document.getElementById("transfer-form")!);
+    expect(onReview).toHaveBeenCalledOnce();
+  });
+
+  it("locks an exhausted wallet but not a zero account cap or the separate Solana mint cap", () => {
+    const data = quota();
+    data.account = {
+      owner: "wallet-a",
+      capUakt: "100000000",
+      usedUakt: "100000000",
+    };
+    const props = {
+      state: { ...state(), sender: "wallet-a" },
+      onReview: vi.fn(),
+      overlay: false,
+    };
+    const { rerender } = render(<TransferCard {...props} quota={view(data)} />);
+    expect(screen.getByLabelText("Amount")).toBeDisabled();
+    expect(
+      screen.getByText("Your wallet’s deposit cap has been reached."),
+    ).toBeVisible();
+    data.account.capUakt = "0";
+    data.mints.usedUakt = data.mints.capUakt;
+    rerender(<TransferCard {...props} quota={view(data)} />);
+    expect(screen.getByLabelText("Amount")).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Review Transfer" }),
+    ).toBeEnabled();
+  });
+
+  it("requires a fresh active period before enabling deposit inputs", () => {
+    const data = quota();
+    expect(depositBlocker(view(data))).toBeNull();
+    expect(depositBlocker({ ...view(data), current: false })).not.toBeNull();
+    expect(
+      depositBlocker({ ...view(data), data: null, loading: true }),
+    ).not.toBeNull();
+    expect(
+      depositBlocker({ ...view(data), now: Date.parse(data.resetAt) }),
+    ).not.toBeNull();
+    expect(
+      depositBlocker(view({ ...data, epochStarted: false })),
+    ).not.toBeNull();
+  });
+
+  it("blocks confirmation in an already-open review when the cap is reached", () => {
+    const onConfirm = vi.fn();
+    const props = {
+      state: state(),
+      suffix: "",
+      ack: true,
+      ackDest: true,
+      setAck: vi.fn(),
+      setAckDest: vi.fn(),
+      onBack: vi.fn(),
+      onConfirm,
+    };
+    const { rerender } = render(<Review {...props} depositBlock={null} />);
+    expect(
+      screen.getByRole("button", { name: "Confirm in Akash wallet" }),
+    ).toBeEnabled();
+    const data = quota();
+    data.deposits.usedUakt = data.deposits.capUakt;
+    rerender(<Review {...props} depositBlock={depositBlocker(view(data))} />);
+    const confirm = screen.getByRole("button", {
+      name: "Confirm in Akash wallet",
+    });
+    expect(confirm).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Back" })).toBeEnabled();
+    for (const checkbox of screen.getAllByRole("checkbox"))
+      expect(checkbox).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+});
+
 describe("quota refresh", () => {
   it("fetches public caps before connection and binds account responses to the active wallet", async () => {
     let finishA: (value: Response) => void = () => {};
@@ -194,16 +333,19 @@ describe("quota refresh", () => {
       await vi.advanceTimersByTimeAsync(1);
     });
     expect(result.current.current).toBe(true);
+    expect(depositBlocker(result.current)).not.toBeNull();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
     expect(result.current.current).toBe(false);
     expect(result.current.data?.deposits.usedUakt).toBe(data.deposits.capUakt);
+    expect(depositBlocker(result.current)).not.toBeNull();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
     expect(result.current.current).toBe(true);
     expect(result.current.data?.epoch).toBe("235");
     expect(result.current.data?.deposits.usedUakt).toBe("3000000");
+    expect(depositBlocker(result.current)).toBeNull();
   });
 });
