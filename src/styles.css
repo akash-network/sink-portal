@@ -1,6 +1,8 @@
 @import "tailwindcss" source(none);
 @import "tw-animate-css";
 @source "./";
+@source "../public/terms.html";
+@source "../public/terms-of-service.html";
 @custom-variant dark (&:is(.dark *));
 
 @font-face {
