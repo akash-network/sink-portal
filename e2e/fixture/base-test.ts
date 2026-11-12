@@ -24,6 +24,7 @@ type Options = {
 };
 
 type Fixtures = {
+  terms: void;
   localUi: void;
   network: PortalNetwork;
   walletSession: WalletSession | null;
@@ -36,6 +37,18 @@ export const test = baseTest.extend<Options & Fixtures>({
   keplr: ["approve", { option: true }],
   solanaWallets: [["Phantom"], { option: true }],
   allowSigning: [false, { option: true }],
+  terms: [
+    async ({ page }, use) => {
+      const dialog = page.getByRole("dialog", { name: "Before you migrate" });
+      await page.addLocatorHandler(dialog, async () => {
+        await dialog
+          .getByRole("button", { name: "I agree and continue" })
+          .click();
+      });
+      await use();
+    },
+    { auto: true },
+  ],
   localUi: [
     async ({ page }, use) => {
       if (testEnvConfig.E2E_LOCAL_UI) await serveLocalUi(page);
