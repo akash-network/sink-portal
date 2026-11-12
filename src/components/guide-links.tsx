@@ -1,9 +1,9 @@
 import { ExternalLink } from "lucide-react";
 
 const guides = [
-  { label: "Portal guide", path: "/docs/learn/akash-sink/portal" },
-  { label: "About the bridge", path: "/docs/learn/akash-sink" },
-  { label: "Mainnet addresses", path: "/docs/learn/akash-sink/mainnet" },
+  { label: "Portal guide", path: "/docs/learn/akash-migrate/portal" },
+  { label: "About the bridge", path: "/docs/learn/akash-migrate" },
+  { label: "Mainnet addresses", path: "/docs/learn/akash-migrate/mainnet" },
 ];
 
 export function GuideLinks() {
