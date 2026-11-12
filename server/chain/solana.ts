@@ -157,6 +157,8 @@ export class SolanaObserver {
       statusAccount,
       bridgeEnabled: launch.bridgeEnabled,
       lightClientProgram: bridge.lightClientProgram,
+      bridge,
+      time,
     };
   }
 
@@ -170,6 +172,21 @@ export class SolanaObserver {
   async deployment() {
     const { contextSlot, bridgeEnabled } = await this.finalizedAccounts();
     return { contextSlot, bridgeEnabled };
+  }
+
+  async mintQuota() {
+    const { bridge, time } = await this.finalizedAccounts();
+    assert.ok(time !== null && Number.isSafeInteger(time) && time > 0);
+    // Mint policy uses UTC days; stored consumption resets on the next mint.
+    const day = BigInt(Math.floor(time / 86_400));
+    const mintDay = BigInt(bridge.mintDay.toString());
+    assert.ok(day >= mintDay, "mint day is ahead of finalized time");
+    return {
+      capUakt: bridge.policy.dailyMintCap.toString(),
+      usedUakt: day === mintDay ? bridge.mintedToday.toString() : "0",
+      maxTransferUakt: bridge.policy.perTransferMax.toString(),
+      resetAt: new Date(Number((day + 1n) * 86_400n) * 1000).toISOString(),
+    };
   }
 
   // Reads the finalized bridge account; throws on a pin mismatch.

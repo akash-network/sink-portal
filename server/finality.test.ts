@@ -142,3 +142,26 @@ test("unavailable Solana transport is distinct from invalid state and absence", 
     contextSlot: 110n,
   });
 });
+
+test("mint quota resets only when finalized Solana time enters a new UTC day", async (t) => {
+  const f = await fixture(t);
+  const now = 86410_000;
+  t.mock.method(Date, "now", () => now);
+  t.mock.method(f.rpc, "getBlockTime", async () => 86410);
+  assert.deepEqual(await f.observer.mintQuota(), {
+    capUakt: "1000",
+    usedUakt: "60",
+    maxTransferUakt: "100",
+    resetAt: "1970-01-03T00:00:00.000Z",
+  });
+  t.mock.method(Date, "now", () => 172810_000);
+  t.mock.method(f.rpc, "getBlockTime", async () => 172810);
+  assert.deepEqual(await f.observer.mintQuota(), {
+    capUakt: "1000",
+    usedUakt: "0",
+    maxTransferUakt: "100",
+    resetAt: "1970-01-04T00:00:00.000Z",
+  });
+  t.mock.method(f.rpc, "getBlockTime", async () => null);
+  await assert.rejects(f.observer.mintQuota());
+});

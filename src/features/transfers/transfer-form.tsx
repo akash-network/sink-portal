@@ -10,11 +10,12 @@ import {
 } from "lucide-react";
 import { type BridgeState, bridge } from "./controller";
 import { WalletLoader } from "../wallets/wallet-loader";
-import { displayAmount, boundsHelp } from "./transfers";
+import { displayAmount } from "./transfers";
 import { clientPause } from "../../lib/model";
 import { Notice } from "../wallets/notice";
 import { useCopy } from "../../hooks/use-copy";
 import { Summary } from "./summary";
+import { WalletQuota, type useQuota } from "./quota";
 
 const SolanaWallets = lazy(() => import("../wallets/solana-wallets"));
 
@@ -259,10 +260,7 @@ function Amount({ state, formOff }: { state: BridgeState; formOff: boolean }) {
           )}
         </div>
       ) : (
-        <p className="help">
-          {boundsHelp(state.config?.limits)} Max leaves room for the {fee} AKT
-          network fee.
-        </p>
+        <p className="help">Max leaves room for the {fee} AKT network fee.</p>
       )}
     </div>
   );
@@ -270,10 +268,12 @@ function Amount({ state, formOff }: { state: BridgeState; formOff: boolean }) {
 
 export function TransferCard({
   state,
+  quota,
   overlay,
   onReview,
 }: {
   state: BridgeState;
+  quota: ReturnType<typeof useQuota>;
   overlay: boolean;
   onReview: () => void;
 }) {
@@ -413,6 +413,7 @@ export function TransferCard({
         )}
         <Destination state={state} formOff={formOff} />
         <Amount state={state} formOff={formOff} />
+        <WalletQuota owner={state.sender} quota={quota} />
         <Summary state={state} withSend />
         <div className="flex flex-col gap-2">
           <button

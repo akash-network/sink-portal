@@ -100,6 +100,13 @@ test("portal serves its build, bounds the proxy, and fails unavailable chains wi
     assert.equal(response.status, 400);
   }
   assert.equal((await fetch(`${origin}/api/transfers?sender=bad`)).status, 400);
+  for (const query of ["sender=bad", "other=wallet", "sender=a&sender=b"]) {
+    assert.equal((await fetch(`${origin}/api/quota?${query}`)).status, 400);
+  }
+  assert.equal(
+    (await fetch(`${origin}/api/quota`, { method: "POST" })).status,
+    404,
+  );
   assert.equal(requests.length, 0, "Malformed lookups must not reach a chain");
   const request = {
     method: "POST",
@@ -148,6 +155,13 @@ test("portal serves its build, bounds the proxy, and fails unavailable chains wi
     error:
       "Network verification is temporarily unavailable. Try again shortly.",
   });
+  const quota = await fetch(`${origin}/api/quota`);
+  assert.equal(quota.status, 503);
+  assert.equal(quota.headers.get("cache-control"), "no-store");
+  assert.deepEqual(
+    await quota.json(),
+    await (await fetch(`${origin}/api/config`)).json(),
+  );
   assert.equal((await fetch(`${origin}/server/config.ts`)).status, 404);
   assert.equal((await fetch(`${origin}/portal.config.json`)).status, 404);
   assert.throws(() =>

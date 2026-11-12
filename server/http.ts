@@ -14,6 +14,7 @@ import {
 import {
   ApiFailure,
   bridgeConfig,
+  bridgeQuota,
   bridgeReceipt,
   receiptLookup,
   walletHistoryAddress,
@@ -117,6 +118,11 @@ export function createPortalServer(config: PortalConfig) {
         value = await portalStatus(config);
       else if (request.method === "GET" && request.url === "/api/config")
         value = await bridgeConfig(config);
+      else if (request.method === "GET" && url.pathname === "/api/quota")
+        value = await bridgeQuota(
+          config,
+          url.search ? walletHistoryAddress(url.searchParams) : null,
+        );
       else if (request.method === "GET" && url.pathname === "/api/receipt")
         value = await bridgeReceipt(receiptLookup(url.searchParams), config);
       else if (request.method === "GET" && url.pathname === "/api/transfers")

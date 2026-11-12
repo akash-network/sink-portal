@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { type BridgeState } from "./controller";
-import { transferEstimate, stageGuide, boundsAnswer } from "./transfers";
+import { transferEstimate, stageGuide } from "./transfers";
 
-export function Faq({ state }: { state: BridgeState }) {
+export function Faq() {
   const [open, setOpen] = useState(0);
   const items = [
     {
@@ -42,7 +41,7 @@ export function Faq({ state }: { state: BridgeState }) {
     },
     {
       q: "Is there a minimum or maximum amount?",
-      a: boundsAnswer(state.config?.limits),
+      a: "Connect your Akash wallet to see your transfer limits, remaining allowance and reset time above the review button.",
     },
     {
       q: "What does Refunded mean?",

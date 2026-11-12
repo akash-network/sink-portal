@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { Comet38Client, HttpClient } from "@cosmjs/tendermint-rpc";
 import { QueryClient } from "@cosmjs/stargate";
+import { QueryEpochInfosResponse } from "@akashnetwork/chain-sdk/private-types/akash.v1beta1";
 import {
   QueryTransfersRequest,
   QueryTransfersResponse,
@@ -11,6 +12,8 @@ import {
   QueryReportersResponse,
   QueryTransferRequest,
   QueryTransferResponse,
+  QueryAccountRequest,
+  QueryAccountResponse,
 } from "@akashnetwork/chain-sdk/private-types/akash.v1";
 import { coinAmount, decodeRecord } from "./records";
 import { sinkIdParts, ownerBytes, type SinkId } from "./id";
@@ -29,6 +32,35 @@ export class AkashClient {
   }
   close() {
     this.comet.disconnect();
+  }
+
+  async quotaEpoch(height: number) {
+    const reply = await this.query.queryAbci(
+      "/akash.epochs.v1beta1.Query/EpochInfos",
+      new Uint8Array(),
+      height,
+    );
+    assert.equal(reply.height, height, "Akash epoch query height mismatch");
+    const epochs = QueryEpochInfosResponse.decode(reply.value).epochs.filter(
+      (epoch) => epoch.id === "day",
+    );
+    assert.equal(epochs.length, 1, "missing native quota epoch");
+    return epochs[0];
+  }
+
+  async accountUsage(owner: string, height: number) {
+    ownerBytes(owner);
+    const reply = await this.query.queryAbci(
+      "/akash.sink.v1.Query/Account",
+      QueryAccountRequest.encode({ owner }).finish(),
+      height,
+    );
+    assert.equal(reply.height, height, "Akash account query height mismatch");
+    const result = QueryAccountResponse.decode(reply.value);
+    assert.ok(result.usage, "missing account usage");
+    coinAmount(result.usage.epochSent);
+    assert.ok(result.usage.lastEpoch <= result.epoch, "future account usage");
+    return { epoch: result.epoch, usage: result.usage };
   }
 
   async state() {

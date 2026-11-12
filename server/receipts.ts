@@ -43,6 +43,8 @@ import type {
 } from "../shared/contracts";
 import type { PortalConfig } from "./config";
 import { pda, LE64 } from "./chain/addresses";
+import { quotaSchema, type Quota } from "../shared/quota";
+import { accountQuota, quotaReset } from "./quota";
 
 export class ApiFailure extends Error {
   constructor(
@@ -243,6 +245,47 @@ export async function bridgeConfig(
       ),
       client,
     };
+  } finally {
+    akash.close();
+  }
+}
+
+export async function bridgeQuota(
+  config: PortalConfig,
+  owner: string | null,
+): Promise<Quota> {
+  const akash = new AkashClient(
+    config.akash.rpcUrl,
+    config.akash.chainId,
+    config.akash.maxAgeSeconds,
+  );
+  try {
+    const { network, observer } = await context(akash, config);
+    const [state, mints] = await Promise.all([
+      akash.state(),
+      observer.mintQuota(),
+    ]);
+    const [epoch, account] = await Promise.all([
+      akash.quotaEpoch(state.height),
+      owner ? akash.accountUsage(owner, state.height) : null,
+    ]);
+    return quotaSchema.parse({
+      version: 1,
+      networkKey: network.networkKey,
+      checkedAt: new Date().toISOString(),
+      akashHeight: state.height.toString(),
+      epoch: state.epoch.toString(),
+      epochStarted: epoch.epochCountingStarted,
+      resetAt: quotaReset(epoch, state.epoch),
+      minTransferUakt: coinAmount(state.params.minAmountPerTransfer).toString(),
+      maxTransferUakt: coinAmount(state.params.maxAmountPerTransfer).toString(),
+      deposits: {
+        capUakt: coinAmount(state.params.maxTransferAmountPerEpoch).toString(),
+        usedUakt: coinAmount(state.sendUsage.amount).toString(),
+      },
+      mints,
+      account: owner && account ? accountQuota(owner, state, account) : null,
+    });
   } finally {
     akash.close();
   }
