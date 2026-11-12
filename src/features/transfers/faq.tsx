@@ -7,7 +7,7 @@ export function Faq() {
   const items = [
     {
       q: "Can I move AKT from Solana back to Akash?",
-      a: "No. Akash Sink only moves AKT from Akash to Solana. Once AKT arrives on Solana, it can’t be transferred back through Akash Sink.",
+      a: "No. Akash Migrate only moves AKT from Akash to Solana. Once AKT arrives on Solana, it can’t be transferred back through Akash Migrate.",
     },
     {
       q: "How long does a transfer take?",
