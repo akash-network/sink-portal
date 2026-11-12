@@ -8,10 +8,11 @@ import { Review } from "./review";
 import { Receipt } from "./receipt";
 import { Transfers } from "./transfer-history";
 import { Faq } from "./faq";
-import { GlobalQuotaWarning, useQuota } from "./quota";
+import { depositBlocker, GlobalQuotaWarning, useQuota } from "./quota";
 
 export function TransferPage({ state }: { state: BridgeState }) {
   const quota = useQuota(state.config?.network.networkKey, state.sender);
+  const depositBlock = depositBlocker(quota);
   const [review, setReview] = useState(false);
   const [ack, setAck] = useState(false);
   const [ackDest, setAckDest] = useState(false);
@@ -22,14 +23,14 @@ export function TransferPage({ state }: { state: BridgeState }) {
   useEffect(() => {
     setAck(false);
     setAckDest(false);
-  }, [state.destination.text, state.sender]);
+  }, [state.destination.text, state.sender, depositBlock]);
   useEffect(() => {
     if (!result) return;
     if (isPhone()) show("rev-h-sm", "rev-h-sm");
     else show(null, "done");
   }, [result?.txHash]);
   const openReview = () => {
-    if (!state.canReview) return;
+    if (!state.canReview || depositBlock) return;
     setReview(true);
     setAck(false);
     setAckDest(false);
@@ -67,11 +68,12 @@ export function TransferPage({ state }: { state: BridgeState }) {
     show("xfer-h", "xfer-h");
   };
   const confirm = () => {
-    if (!state.canReview || !ack || !ackDest) return;
+    if (!state.canReview || depositBlock || !ack || !ackDest) return;
     void bridge.transfer();
   };
   const reviewProps = {
     state,
+    depositBlock,
     ack,
     ackDest,
     setAck,
