@@ -15,7 +15,7 @@ import { clientPause } from "../../lib/model";
 import { Notice } from "../wallets/notice";
 import { useCopy } from "../../hooks/use-copy";
 import { Summary } from "./summary";
-import { depositBlocker, WalletQuota, type useQuota } from "./quota";
+import { depositBlocker, WalletLimitsButton, type useQuota } from "./quota";
 
 const SolanaWallets = lazy(() => import("../wallets/solana-wallets"));
 
@@ -378,13 +378,20 @@ export function TransferCard({
                 {copied === "addr" ? "Copied" : "Copy"}
               </button>
             </div>
-            <span
-              id="akash-account"
-              title={state.sender}
-              className="addr text-[13px] leading-[18px] text-[var(--fg2)]"
-            >
-              {state.sender}
-            </span>
+            <div className="flex items-center gap-2">
+              <span
+                id="akash-account"
+                title={state.sender}
+                className="addr min-w-0 text-[13px] leading-[18px] text-[var(--fg2)]"
+              >
+                {state.sender}
+              </span>
+              <WalletLimitsButton
+                key={state.sender}
+                owner={state.sender}
+                quota={quota}
+              />
+            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -416,7 +423,6 @@ export function TransferCard({
         )}
         <Destination state={state} formOff={transferOff} />
         <Amount state={state} formOff={transferOff} />
-        <WalletQuota owner={state.sender} quota={quota} />
         <Summary state={state} withSend />
         <div className="flex flex-col gap-2">
           <button

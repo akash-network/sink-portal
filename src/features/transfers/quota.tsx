@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { TriangleAlert } from "lucide-react";
+import { Info, TriangleAlert, X } from "lucide-react";
 import { quotaSchema, type Quota } from "../../../shared/quota";
+import { Modal } from "../../components/modal";
 import { api, fresh, serverNow } from "../../lib/model";
 import { displayAmount } from "./transfers";
 
@@ -181,6 +182,65 @@ export function GlobalQuotaWarning({ quota }: { quota: QuotaView }) {
   );
 }
 
+export function WalletLimitsButton({
+  owner,
+  quota,
+}: {
+  owner: string;
+  quota: QuotaView;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn-ghost btn-icon shrink-0"
+        aria-label="View wallet limits"
+        title="View wallet limits"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? "wallet-limits" : undefined}
+        onClick={() => setOpen(true)}
+      >
+        <Info className="ico" aria-hidden="true" />
+      </button>
+      {open && (
+        <Modal
+          id="wallet-limits"
+          labelledBy="wallet-limits-title"
+          describedBy="wallet-limits-address"
+          onEscape={() => setOpen(false)}
+        >
+          <div className="flex flex-col gap-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-col gap-2">
+                <h2
+                  id="wallet-limits-title"
+                  className="display text-xl leading-7"
+                >
+                  Wallet limits
+                </h2>
+                <p id="wallet-limits-address" className="addr help">
+                  {owner}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon shrink-0"
+                onClick={() => setOpen(false)}
+                aria-label="Close wallet limits"
+              >
+                <X className="ico" aria-hidden="true" />
+              </button>
+            </div>
+            <WalletQuota owner={owner} quota={quota} />
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
+
 export function WalletQuota({
   owner,
   quota,
@@ -215,8 +275,7 @@ export function WalletQuota({
       aria-label="Your wallet limits"
       className="well rounded-lg px-4 py-3 text-sm"
     >
-      <h3 className="font-semibold">Your limits</h3>
-      <dl className="mt-2 flex flex-col gap-1.5">
+      <dl className="flex flex-col gap-1.5">
         <div className="flex flex-wrap justify-between gap-x-3 gap-y-1">
           <dt className="muted">Per transfer</dt>
           <dd className="mono">

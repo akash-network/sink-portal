@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Quota } from "../../../shared/quota";
 import {
@@ -56,7 +57,9 @@ afterEach(() => {
 describe("wallet limits", () => {
   it("shows only the connected wallet’s allowance and removes it on disconnect", () => {
     const { rerender } = render(<WalletQuota owner={null} quota={view()} />);
-    expect(screen.queryByText("Your limits")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "Your wallet limits" }),
+    ).not.toBeInTheDocument();
     rerender(<WalletQuota owner="wallet-a" quota={view()} />);
     expect(screen.getByText("70.00 AKT")).toBeVisible();
     expect(screen.getByText("1.00–100.00 AKT")).toBeVisible();
@@ -98,6 +101,81 @@ describe("wallet limits", () => {
     data.account = { ...data.account, capUakt: "10000000" };
     rerender(<WalletQuota owner="wallet-a" quota={view(data)} />);
     expect(screen.getByText("0.00 AKT")).toBeVisible();
+  });
+});
+
+describe("wallet limits dialog", () => {
+  it("opens from the address info button even at the cap, and returns focus on close", async () => {
+    const user = userEvent.setup();
+    const data = quota();
+    data.account = {
+      owner: "wallet-a",
+      capUakt: "100000000",
+      usedUakt: "100000000",
+    };
+    render(
+      <TransferCard
+        state={{ ...bridge.getSnapshot(), sender: "wallet-a" }}
+        quota={view(data)}
+        overlay={false}
+        onReview={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("This period")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Amount")).toBeDisabled();
+    const trigger = screen.getByRole("button", { name: "View wallet limits" });
+    await user.click(trigger);
+    expect(screen.getByRole("dialog", { name: "Wallet limits" })).toBeVisible();
+    expect(screen.getByText("100.00 AKT")).toBeVisible();
+    expect(screen.getByText(/Resets in/)).toBeVisible();
+    const close = screen.getByRole("button", { name: "Close wallet limits" });
+    expect(close).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    await user.click(trigger);
+    await user.click(
+      screen.getByRole("button", { name: "Close wallet limits" }),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(screen.getByLabelText("Amount")).toBeDisabled();
+  });
+
+  it("closes on wallet changes and disconnect, without showing the previous wallet’s usage", async () => {
+    const user = userEvent.setup();
+    const props = {
+      quota: view(),
+      overlay: false,
+      onReview: vi.fn(),
+    };
+    const { rerender } = render(
+      <TransferCard
+        {...props}
+        state={{ ...bridge.getSnapshot(), sender: "wallet-a" }}
+      />,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "View wallet limits" }),
+    );
+    expect(screen.getByText("70.00 AKT")).toBeVisible();
+    rerender(
+      <TransferCard
+        {...props}
+        state={{ ...bridge.getSnapshot(), sender: "wallet-b" }}
+      />,
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "View wallet limits" }),
+    );
+    expect(screen.queryByText("70.00 AKT")).not.toBeInTheDocument();
+    expect(screen.getByText(/temporarily unavailable/)).toBeVisible();
+    rerender(<TransferCard {...props} state={bridge.getSnapshot()} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "View wallet limits" }),
+    ).not.toBeInTheDocument();
   });
 });
 
