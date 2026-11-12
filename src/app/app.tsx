@@ -4,10 +4,12 @@ import { portalRoute } from "../features/transfers/transfers";
 import { WalletLoader } from "../features/wallets/wallet-loader";
 import { TransferDialog } from "../features/transfers/transaction";
 import { Header } from "./header";
+import { MigrationBanner } from "./migration-banner";
 import { TransferPage } from "../features/transfers/transfer-page";
 import { Developer } from "../features/developer/developer-page";
 import { ThemeControl } from "./theme-control";
 import { networkLabel } from "../lib/network";
+import { GuideLinks } from "../components/guide-links";
 
 const AkashWallets = lazy(() => import("../features/wallets/akash-wallets"));
 
@@ -28,6 +30,7 @@ export function App() {
   }, []);
   return (
     <div className="ab flex min-h-screen flex-col">
+      <MigrationBanner />
       <Header state={state} />
       {state.config && akashOpened && (
         <WalletLoader>
@@ -65,6 +68,7 @@ export function App() {
         </section>
       </main>
       <footer className="border-t border-[var(--bd)]">
+        <GuideLinks />
         <div className="wrap flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-5">
           <span className="help">Akash → Solana, one way</span>
           <div className="flex items-center gap-2">

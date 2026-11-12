@@ -8,8 +8,10 @@ import { Review } from "./review";
 import { Receipt } from "./receipt";
 import { Transfers } from "./transfer-history";
 import { Faq } from "./faq";
+import { GlobalQuotaWarning, useQuota } from "./quota";
 
 export function TransferPage({ state }: { state: BridgeState }) {
+  const quota = useQuota(state.config?.network.networkKey, state.sender);
   const [review, setReview] = useState(false);
   const [ack, setAck] = useState(false);
   const [ackDest, setAckDest] = useState(false);
@@ -93,9 +95,15 @@ export function TransferPage({ state }: { state: BridgeState }) {
           Track a transfer
         </button>
       </div>
+      <GlobalQuotaWarning quota={quota} />
       <div className="flex flex-wrap items-start gap-6">
         <div className="mx-auto flex w-full max-w-[640px] min-w-0 flex-col">
-          <TransferCard state={state} overlay={overlay} onReview={openReview} />
+          <TransferCard
+            state={state}
+            quota={quota}
+            overlay={overlay}
+            onReview={openReview}
+          />
           {overlay && (
             <section
               className="card pad show-sm flex flex-col"
@@ -113,7 +121,7 @@ export function TransferPage({ state }: { state: BridgeState }) {
         setHighlight={setHighlight}
         onRetry={retry}
       />
-      <Faq state={state} />
+      <Faq />
       {overlay && (
         <Modal
           className="hide-sm"

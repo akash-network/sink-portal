@@ -1,0 +1,24 @@
+<svg
+  width="180"
+  height="180"
+  viewBox="0 0 180 180"
+  fill="none"
+  xmlns="http://www.w3.org/2000/svg"
+>
+  <style>
+    path {
+      fill: #0c0b0b;
+    }
+    @media (prefers-color-scheme: dark) {
+      path {
+        fill: white;
+      }
+    }
+  </style>
+  <path
+    d="M164.112 111.836L139.288 154.725L139.292 154.731H139.285L139.278 154.743L139.271 154.731H89.5703L64.708 111.846L39.875 154.746L15 111.838L39.8545 68.9102H89.5537L64.6953 26H114.404L164.112 111.836ZM64.7207 111.824H107.161L126.312 132.361L89.5576 68.917L64.7207 111.824Z"
+    fill-rule="evenodd"
+    clip-rule="evenodd"
+    fill="white"
+  />
+</svg>
