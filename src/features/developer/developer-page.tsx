@@ -76,7 +76,7 @@ export function Developer({ state }: { state: BridgeState }) {
     );
   const command = status
     ? [
-        "akash tx sink deposit <SOLANA_PUBLIC_KEY> 1000000uakt",
+        "akash tx sink deposit <SOLANA_PUBLIC_KEY> 1000000000uakt",
         "  --dest-type 1 --from <KEY>",
         `  --chain-id ${status.chainId}`,
         `  --node ${status.endpoints.akash}`,
