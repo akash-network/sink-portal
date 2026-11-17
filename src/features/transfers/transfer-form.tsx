@@ -261,7 +261,11 @@ function Amount({ state, formOff }: { state: BridgeState; formOff: boolean }) {
           )}
         </div>
       ) : (
-        <p className="help">Max leaves room for the {fee} AKT network fee.</p>
+        <p className="help">
+          {state.config &&
+            `Minimum: ${displayAmount(state.config.limits.minTransferUakt)} AKT. `}
+          Max leaves room for the {fee} AKT network fee.
+        </p>
       )}
     </div>
   );

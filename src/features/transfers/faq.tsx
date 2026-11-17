@@ -41,7 +41,7 @@ export function Faq() {
     },
     {
       q: "Is there a minimum or maximum amount?",
-      a: "Connect your Akash wallet to see your transfer limits, remaining allowance and reset time above the review button.",
+      a: "The minimum transfer is 1,000 AKT (1k AKT), plus the Akash network fee. Connect your Akash wallet to see your current transfer limits, remaining allowance and reset time.",
     },
     {
       q: "What does Refunded mean?",
