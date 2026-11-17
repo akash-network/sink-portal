@@ -100,6 +100,11 @@ export function createPortalServer(config: PortalConfig) {
             const body = await readFile(asset);
             if (url.pathname.startsWith("/token/"))
               response.setHeader("Access-Control-Allow-Origin", "*");
+            if (/^chunks\/[^/]+-[\w-]{8}\.js$/.test(relative))
+              response.setHeader(
+                "Cache-Control",
+                "public, max-age=31536000, immutable",
+              );
             response.setHeader("Content-Type", contentType);
             response.end(body);
             return;

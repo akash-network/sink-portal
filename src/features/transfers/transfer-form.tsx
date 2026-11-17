@@ -41,6 +41,7 @@ function Destination({
   const check = destination.check;
   const wallet = destination.source === "wallet" ? destination.wallet : null;
   const bad = check.state === "invalid" || check.state === "account";
+  const pickerOpen = !formOff && !wallet && picker && !state.solanaConnecting;
   useEffect(() => {
     if (state.solanaConnecting || formOff) setPicker(false);
   }, [state.solanaConnecting, formOff]);
@@ -178,10 +179,14 @@ function Destination({
         </div>
       )}
       {walletsOpened && (
-        <WalletLoader>
+        <WalletLoader
+          network="Solana"
+          open={pickerOpen}
+          onClose={() => setPicker(false)}
+        >
           <SolanaWallets
             state={state}
-            open={!formOff && !wallet && picker && !state.solanaConnecting}
+            open={pickerOpen}
             onClose={() => setPicker(false)}
           />
         </WalletLoader>

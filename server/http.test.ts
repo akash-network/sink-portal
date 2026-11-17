@@ -17,6 +17,13 @@ test("portal serves its build, bounds the proxy, and fails unavailable chains wi
     join(dist, "index.html"),
     "<!doctype html><title>Portal build</title>",
   );
+  await mkdir(join(dist, "chunks"));
+  for (const asset of [
+    "app.js",
+    "chunks/akash-wallets-CPsdOjqM.js",
+    "chunks/unversioned.js",
+  ])
+    await writeFile(join(dist, asset), "export {};");
   const requests: {
     method: string | undefined;
     url: string | undefined;
@@ -75,7 +82,23 @@ test("portal serves its build, bounds the proxy, and fails unavailable chains wi
   const origin = `http://127.0.0.1:${listening.port}`;
   const home = await fetch(origin);
   assert.equal(home.status, 200);
+  assert.equal(home.headers.get("cache-control"), "no-store");
   assert.match(await home.text(), /Portal build/);
+  for (const asset of ["app.js", "chunks/unversioned.js"]) {
+    const response = await fetch(`${origin}/${asset}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+  }
+  const chunk = await fetch(`${origin}/chunks/akash-wallets-CPsdOjqM.js`);
+  assert.equal(chunk.status, 200);
+  assert.equal(
+    chunk.headers.get("cache-control"),
+    "public, max-age=31536000, immutable",
+  );
+  assert.equal(await chunk.text(), "export {};");
+  const missingChunk = await fetch(`${origin}/chunks/missing-CPsdOjqM.js`);
+  assert.equal(missingChunk.status, 404);
+  assert.equal(missingChunk.headers.get("cache-control"), "no-store");
   assert.match(
     home.headers.get("content-security-policy") ?? "",
     /script-src 'self'/,
@@ -151,6 +174,7 @@ test("portal serves its build, bounds the proxy, and fails unavailable chains wi
   assert.equal(requests.length, 1, "Disabled faucet must never query or sign");
   const unavailable = await fetch(`${origin}/api/config`);
   assert.equal(unavailable.status, 503);
+  assert.equal(unavailable.headers.get("cache-control"), "no-store");
   assert.deepEqual(await unavailable.json(), {
     error:
       "Network verification is temporarily unavailable. Try again shortly.",

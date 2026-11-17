@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Route } from "@playwright/test";
 import {
   injectWallets,
   type SolanaWalletName,
@@ -28,8 +28,92 @@ async function setup(
   });
   const view = new TransferPage(page);
   await view.goto();
+  await page.getByRole("button", { name: "I agree and continue" }).click();
   return { wallets, view, errors };
 }
+
+for (const network of ["Akash", "Solana"] as const) {
+  test(`${network} loading stays in a dismissible dialog until the wallet chunk arrives`, async ({
+    page,
+  }) => {
+    const pending: Route[] = [];
+    await page.route(
+      `**/chunks/${network.toLowerCase()}-wallets-*.js`,
+      (route) => {
+        pending.push(route);
+      },
+    );
+    const { view, wallets, errors } = await setup(page);
+    const opener =
+      network === "Akash" ? view.connectKeplrButton : view.connectSolanaButton;
+    const dialog = page.getByRole("dialog", {
+      name: `Connect ${network} wallet`,
+    });
+    const loading = page
+      .getByRole("status")
+      .filter({ hasText: "Loading wallets" });
+
+    if (network === "Akash") {
+      // Preload before the first click, without opening or connecting a wallet.
+      await expect.poll(() => pending.length).toBe(1);
+      await expect(dialog).toHaveCount(0);
+      await expect(loading).toHaveCount(0);
+      expect(wallets.suggestedChains).toEqual([]);
+    }
+    await opener.click();
+    await expect(dialog.getByRole("status")).toHaveText("Loading wallets…");
+    await expect(loading).toHaveCount(1);
+    const close = dialog.getByRole("button", { name: "Close", exact: true });
+    await expect(close).toBeFocused();
+    await close.click();
+    await expect(dialog).toHaveCount(0);
+    await expect(loading).toHaveCount(0);
+    await expect(opener).toBeFocused();
+
+    await opener.click();
+    await expect(dialog.getByRole("status")).toHaveText("Loading wallets…");
+    await expect.poll(() => pending.length).toBe(1);
+    await Promise.all(pending.map((route) => route.continue()));
+    await expect(dialog.locator(".wallet-option").first()).toBeEnabled();
+    await expect(loading).toHaveCount(0);
+    await expect(close).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(opener).toBeFocused();
+    await opener.click();
+    await expect(dialog.locator(".wallet-option").first()).toBeEnabled();
+    expect(pending).toHaveLength(1);
+    expect(wallets.cosmosSignRequests).toBe(0);
+    expect(wallets.solanaSignRequests).toBe(0);
+    expect(errors).toEqual([]);
+  });
+}
+
+test("a failed Akash preload stays hidden until a dismissible error dialog is opened", async ({
+  page,
+}) => {
+  await page.route("**/chunks/akash-wallets-*.js", (route) =>
+    route.fulfill({ status: 503, body: "Unavailable" }),
+  );
+  const preload = page.waitForResponse("**/chunks/akash-wallets-*.js");
+  const { view } = await setup(page);
+  expect((await preload).status()).toBe(503);
+  await expect(
+    page.getByText("Wallet tools couldn’t load.", { exact: false }),
+  ).toHaveCount(0);
+  await view.connectKeplrButton.click();
+  const dialog = page.getByRole("dialog", { name: "Connect Akash wallet" });
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Reload the page to try again.",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Reload", exact: true }),
+  ).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(view.connectKeplrButton).toBeFocused();
+  await view.connectKeplrButton.click();
+  await expect(dialog.getByRole("alert")).toBeVisible();
+});
 
 test("[desktop] Akash picker uses Cosmos Kit and the configured private chain", async ({
   page,
