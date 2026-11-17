@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
-import { walletNetwork } from "./wallet-network";
+import { walletNetwork, walletQuota } from "./wallet-network";
 
 const root = resolve("dist");
 const types: Record<string, string> = {
@@ -17,9 +17,15 @@ createServer(async (req, res) => {
     "Content-Security-Policy",
     "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   );
-  if (url.pathname === "/api/config") {
+  if (url.pathname === "/api/config" || url.pathname === "/api/quota") {
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify(walletNetwork()));
+    res.end(
+      JSON.stringify(
+        url.pathname === "/api/config"
+          ? walletNetwork()
+          : walletQuota(url.searchParams.get("sender")),
+      ),
+    );
     return;
   }
   if (

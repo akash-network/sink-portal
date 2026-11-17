@@ -1,5 +1,6 @@
 import { toBech32 } from "@cosmjs/encoding";
 import type { BridgeConfig } from "../../shared/contracts";
+import type { Quota } from "../../shared/quota";
 import { solanaDestination } from "./wallet/test-wallets";
 
 export function walletNetwork(): BridgeConfig {
@@ -45,5 +46,38 @@ export function walletNetwork(): BridgeConfig {
       ageSeconds: 5,
       trustingPeriodSeconds: 86400,
     },
+  };
+}
+
+export function walletQuota(owner: string | null): Quota {
+  const config = walletNetwork();
+  const resetAt = new Date(Date.now() + 3600_000).toISOString();
+  return {
+    version: 1,
+    networkKey: config.network.networkKey,
+    checkedAt: config.checkedAt,
+    akashHeight: config.akashHeight,
+    epoch: "1",
+    epochStarted: true,
+    resetAt,
+    minTransferUakt: config.limits.minTransferUakt,
+    maxTransferUakt: config.limits.maxTransferUakt,
+    deposits: {
+      capUakt: config.limits.maxEpochAmountTotalUakt,
+      usedUakt: "0",
+    },
+    mints: {
+      capUakt: config.limits.maxEpochAmountTotalUakt,
+      usedUakt: "0",
+      maxTransferUakt: config.limits.maxTransferUakt,
+      resetAt,
+    },
+    account: owner
+      ? {
+          owner,
+          capUakt: config.limits.maxEpochAmountPerAccountUakt,
+          usedUakt: "0",
+        }
+      : null,
   };
 }

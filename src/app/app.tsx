@@ -12,13 +12,21 @@ import { networkLabel } from "../lib/network";
 import { GuideLinks } from "../components/guide-links";
 import { hasAcceptedTerms, TermsDialog } from "./terms-dialog";
 
-const AkashWallets = lazy(() => import("../features/wallets/akash-wallets"));
+const loadAkashWallets = () => import("../features/wallets/akash-wallets");
+const AkashWallets = lazy(loadAkashWallets);
 
 export function App() {
   const state = useSyncExternalStore(bridge.subscribe, bridge.getSnapshot);
   const [hash, setHash] = useState(location.hash);
   const [akashOpened, setAkashOpened] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(hasAcceptedTerms);
+  useEffect(() => {
+    if (termsAccepted) {
+      // Warm the module without mounting Cosmos Kit or restoring a wallet session.
+      // A failed preload is handled by WalletLoader when the picker opens.
+      void loadAkashWallets().catch(() => {});
+    }
+  }, [termsAccepted]);
   useEffect(() => {
     if (state.akashPicker) setAkashOpened(true);
   }, [state.akashPicker]);
@@ -35,15 +43,21 @@ export function App() {
       <div className="ab flex min-h-screen flex-col" inert={!termsAccepted}>
         <MigrationBanner />
         <Header state={state} />
-        {termsAccepted && state.config && akashOpened && (
-          <WalletLoader>
-            <AkashWallets
-              key={state.config.network.networkKey}
-              state={state}
-              config={state.config}
-            />
-          </WalletLoader>
-        )}
+        {termsAccepted &&
+          state.config &&
+          (state.akashPicker || akashOpened) && (
+            <WalletLoader
+              network="Akash"
+              open={state.akashPicker}
+              onClose={bridge.closeAkashPicker}
+            >
+              <AkashWallets
+                key={state.config.network.networkKey}
+                state={state}
+                config={state.config}
+              />
+            </WalletLoader>
+          )}
         <main className="wrap sec gap-lg flex grow flex-col">
           <div
             id="transfer-view"
